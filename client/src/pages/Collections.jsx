@@ -3,6 +3,7 @@ import { albumsApi } from '../api/albums.js';
 import { api } from '../api/client.js';
 import { AlbumCard } from '../components/AlbumCard.jsx';
 import { AlbumRow } from '../components/AlbumRow.jsx';
+import { AlbumRowMobile } from '../components/AlbumRowMobile.jsx';
 import { Pagination } from '../components/Pagination.jsx';
 import { useI18n } from '../config/i18n/index.jsx';
 import { Search, Grid, List, X, Plus, Disc, Database, AlertCircle, Music, CheckSquare, Square, Trash2, Settings } from 'lucide-preact';
@@ -395,46 +396,69 @@ export function Collections({ navigate, params = {} }) {
                     )}
 
                     {effectiveViewMode === 'list' && (
-                      <div class="card">
-                        <div class="table-responsive">
-                          <table class="table table-vcenter card-table">
-                            <thead>
-                              <tr>
-                                {selectionMode && <th style={{ width: 40 }}></th>}
-                                <th class="d-none d-sm-table-cell">{t('table.cover')}</th>
-                                <th>{t('table.title')}</th>
-                                <th>{t('table.artist')}</th>
-                                <th class="d-none d-lg-table-cell">{t('table.year')}</th>
-                                <th class="d-none d-lg-table-cell">{t('table.genre')}</th>
-                                <th class="d-none d-md-table-cell">{t('table.rating')}</th>
-                                <th class="d-none d-md-table-cell">{t('table.label')}</th>
-                              </tr>
-                            </thead>
-                            <tbody>
+                      <>
+                        {/* Mobile list view - Dashboard style */}
+                        {isMobile && (
+                          <div class="card">
+                            <div class="list-group list-group-flush">
                               {albums.map(album => (
-                                <>
-                                  {selectionMode && (
-                                    <td style={{ cursor: 'pointer' }} onClick={() => toggleSelect(album.id)}>
-                                      {selectedIds.has(album.id)
-                                        ? <CheckSquare size={18} class="text-primary" />
-                                        : <Square size={18} class="text-muted" />}
-                                    </td>
-                                  )}
-                                  <AlbumRow
-                                    key={album.id}
-                                    album={album}
-                                    onClick={selectionMode ? () => toggleSelect(album.id) : (a) => navigate('detail', { id: a.id })}
-                                    onEdit={selectionMode ? undefined : (a) => navigate('edit', { id: a.id })}
-                                    onDelete={selectionMode ? undefined : (a) => setDeleteTarget(a)}
-                                    onLend={selectionMode ? undefined : (a) => { setLendTarget(a); setLentTo(a.lent_to || ''); }}
-                                    onRate={selectionMode ? undefined : handleRate}
-                                  />
-                                </>
+                                <AlbumRowMobile
+                                  key={album.id}
+                                  album={album}
+                                  onClick={selectionMode ? undefined : (a) => navigate('detail', { id: a.id })}
+                                  selectionMode={selectionMode}
+                                  selected={selectedIds.has(album.id)}
+                                  onSelect={toggleSelect}
+                                />
                               ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Desktop table view */}
+                        {!isMobile && (
+                          <div class="card">
+                            <div class="table-responsive">
+                              <table class="table table-vcenter card-table">
+                                <thead>
+                                  <tr>
+                                    {selectionMode && <th style={{ width: 40 }}></th>}
+                                    <th class="d-none d-sm-table-cell">{t('table.cover')}</th>
+                                    <th>{t('table.title')}</th>
+                                    <th>{t('table.artist')}</th>
+                                    <th class="d-none d-lg-table-cell">{t('table.year')}</th>
+                                    <th class="d-none d-lg-table-cell">{t('table.genre')}</th>
+                                    <th class="d-none d-md-table-cell">{t('table.rating')}</th>
+                                    <th class="d-none d-md-table-cell">{t('table.label')}</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {albums.map(album => (
+                                    <>
+                                      {selectionMode && (
+                                        <td style={{ cursor: 'pointer' }} onClick={() => toggleSelect(album.id)}>
+                                          {selectedIds.has(album.id)
+                                            ? <CheckSquare size={18} class="text-primary" />
+                                            : <Square size={18} class="text-muted" />}
+                                        </td>
+                                      )}
+                                      <AlbumRow
+                                        key={album.id}
+                                        album={album}
+                                        onClick={selectionMode ? () => toggleSelect(album.id) : (a) => navigate('detail', { id: a.id })}
+                                        onEdit={selectionMode ? undefined : (a) => navigate('edit', { id: a.id })}
+                                        onDelete={selectionMode ? undefined : (a) => setDeleteTarget(a)}
+                                        onLend={selectionMode ? undefined : (a) => { setLentTarget(a); setLentTo(a.lent_to || ''); }}
+                                        onRate={selectionMode ? undefined : handleRate}
+                                      />
+                                    </>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {/* Bottom controls */}

@@ -3,6 +3,7 @@ import { albumsApi } from '../api/albums.js';
 import { api } from '../api/client.js';
 import { AlbumCard } from '../components/AlbumCard.jsx';
 import { AlbumRow } from '../components/AlbumRow.jsx';
+import { AlbumRowMobile } from '../components/AlbumRowMobile.jsx';
 import { Pagination } from '../components/Pagination.jsx';
 import { useI18n } from '../config/i18n/index.jsx';
 import { Search, Grid, List, X, Plus, Heart, Database, Music, CheckCheck, Settings } from 'lucide-preact';
@@ -17,7 +18,7 @@ export function WantList({ navigate, params = {} }) {
   const [activeDatabase, setActiveDatabase] = useState(null);
   const [dbCheckComplete, setDbCheckComplete] = useState(false);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('jewelbox-wantlist-viewMode') || 'grid');
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 576);
+const [isMobile, setIsMobile] = useState(() => window.innerWidth < 576);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(() => {
     const saved = localStorage.getItem('jewelbox-wantlist-limit');
@@ -283,36 +284,56 @@ export function WantList({ navigate, params = {} }) {
                         )}
 
                         {effectiveViewMode === 'list' && (
-                          <div class="card">
-                            <div class="table-responsive">
-                              <table class="table table-vcenter card-table">
-                                <thead>
-                                  <tr>
-                                    <th class="d-none d-sm-table-cell">{t('table.cover')}</th>
-                                    <th>{t('table.title')}</th>
-                                    <th>{t('table.artist')}</th>
-                                    <th class="d-none d-lg-table-cell">{t('table.year')}</th>
-                                    <th class="d-none d-lg-table-cell">{t('table.genre')}</th>
-                                    <th class="d-none d-md-table-cell">{t('table.rating')}</th>
-                                    <th class="d-none d-md-table-cell">{t('table.label')}</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
+                          <>
+                            {/* Mobile list view - Dashboard style */}
+                            {isMobile && (
+                              <div class="card">
+                                <div class="list-group list-group-flush">
                                   {albums.map(album => (
-                                    <AlbumRow
+                                    <AlbumRowMobile
                                       key={album.id}
                                       album={album}
                                       onClick={(a) => navigate('detail', { id: a.id })}
-                                      onEdit={(a) => navigate('edit', { id: a.id })}
-                                      onDelete={(a) => setDeleteTarget(a)}
-                                      onAcquire={(a) => setAcquireTarget(a)}
-                                      onRate={handleRate}
                                     />
                                   ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Desktop table view */}
+                            {!isMobile && (
+                              <div class="card">
+                                <div class="table-responsive">
+                                  <table class="table table-vcenter card-table">
+                                    <thead>
+                                      <tr>
+                                        <th class="d-none d-sm-table-cell">{t('table.cover')}</th>
+                                        <th>{t('table.title')}</th>
+                                        <th>{t('table.artist')}</th>
+                                        <th class="d-none d-lg-table-cell">{t('table.year')}</th>
+                                        <th class="d-none d-lg-table-cell">{t('table.genre')}</th>
+                                        <th class="d-none d-md-table-cell">{t('table.rating')}</th>
+                                        <th class="d-none d-md-table-cell">{t('table.label')}</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {albums.map(album => (
+                                        <AlbumRow
+                                          key={album.id}
+                                          album={album}
+                                          onClick={(a) => navigate('detail', { id: a.id })}
+                                          onEdit={(a) => navigate('edit', { id: a.id })}
+                                          onDelete={(a) => setDeleteTarget(a)}
+                                          onAcquire={(a) => setAcquireTarget(a)}
+                                          onRate={handleRate}
+                                        />
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </>
                         )}
 
                         <div class="mt-4 d-flex justify-content-between align-items-center">
