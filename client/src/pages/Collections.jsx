@@ -47,12 +47,6 @@ export function Collections({ navigate, params = {} }) {
     setTimeout(() => setToast(null), 3000);
   };
 
-  useEffect(() => {
-    if (params.successMessage) {
-      setTimeout(() => setToast(null), 3000);
-    }
-  }, []);
-
   // Save viewMode to localStorage when it changes
   useEffect(() => {
     localStorage.setItem('jewelbox-collections-viewMode', viewMode);

@@ -39,10 +39,6 @@ const [isMobile, setIsMobile] = useState(() => window.innerWidth < 576);
     setTimeout(() => setToast(null), 3000);
   };
 
-  useEffect(() => {
-    if (params.successMessage) setTimeout(() => setToast(null), 3000);
-  }, []);
-
   // Listen for window resize to detect mobile
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 576);

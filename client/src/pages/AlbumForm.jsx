@@ -145,15 +145,15 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
     }
   }, []);
 
-  // Load existing album for edit
+  // Load album data when editing
   useEffect(() => {
-    if (!isEdit) return;
+    if (!albumId) return;
     setLoading(true);
     api.getAlbum(albumId).then((album) => {
       setForm({
         title: album.title || '',
-        artist_name: album.artist?.name || '',
-        label_name: album.label?.name || '',
+        artist_name: album.artist_name || '',
+        label_name: album.label_name || '',
         year: album.year || '',
         genre: album.genre || '',
         total_duration: album.total_duration || '',
@@ -162,10 +162,13 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
         cover_url: album.cover_url || '',
         notes: album.notes || '',
         tracks: album.tracks || [],
-        is_wanted: Boolean(album.is_wanted),
+        is_wanted: album.is_wanted || false,
       });
-    }).catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      setLoading(false);
+    }).catch(() => {
+      setError(t('albumForm.loadError'));
+      setLoading(false);
+    });
   }, [albumId]);
 
   const set = (key, value) => setForm((f) => ({ ...f, [key]: value }));
