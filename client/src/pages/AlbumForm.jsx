@@ -152,8 +152,8 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
     api.getAlbum(albumId).then((album) => {
       setForm({
         title: album.title || '',
-        artist_name: album.artist_name || '',
-        label_name: album.label_name || '',
+        artist_name: album.artist?.name || '',
+        label_name: album.label?.name || '',
         year: album.year || '',
         genre: album.genre || '',
         total_duration: album.total_duration || '',
@@ -195,6 +195,7 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
       if (isEdit) {
         await api.updateAlbum(albumId, payload);
         showToast(t('albumForm.updateSuccess'), 'success');
+        navigate('detail', { id: albumId });
       } else {
         await api.createAlbum(payload);
         if (fromWantList) {
