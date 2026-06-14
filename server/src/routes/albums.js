@@ -314,7 +314,7 @@ export async function albumRoutes(fastify) {
       if (!title || !artist) return { duplicate: false };
       const db = getDb();
       const row = db.prepare(`
-        SELECT a.id, a.title FROM albums a
+        SELECT a.id, a.title, a.is_wanted FROM albums a
         JOIN artists ar ON ar.id = a.artist_id
         WHERE a.title = ? COLLATE NOCASE AND ar.name = ? COLLATE NOCASE
         LIMIT 1
