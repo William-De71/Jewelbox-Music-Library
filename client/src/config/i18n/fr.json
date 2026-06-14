@@ -140,6 +140,8 @@
     "search": "Rechercher",
     "searchNoResults": "Aucun résultat trouvé pour cette recherche.",
     "duplicateWarning": "Cet album existe peut-être déjà dans votre collection.",
+    "duplicateWarningWishlist": "Cet album est déjà présent dans votre liste de souhaits.",
+    "duplicateWarningCollection": "Cet album est déjà présent dans votre collection.",
     "viewExisting": "Voir l'album existant →",
     "clear": "Effacer",
     "updateSuccess": "Album modifié avec succès",

@@ -295,6 +295,7 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
       tracks: r.tracks || [],
     });
     setSearchResults([]);
+    checkDuplicate(r.title || '', r.artist_name || '');
   };
 
   const selectRelease = async (r) => {
@@ -401,13 +402,12 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
         <div class="alert alert-warning mb-3 d-flex align-items-center gap-2">
           <CopyX size={18} class="flex-shrink-0" />
           <span>
-            <strong>{t('albumForm.duplicateWarning')}</strong>{' '}
+            <strong>{t(duplicateWarning.is_wanted ? 'albumForm.duplicateWarningWishlist' : 'albumForm.duplicateWarningCollection')}</strong>{' '}
             <button class="btn btn-sm btn-link p-0 ms-1 fw-semibold"
               onClick={() => navigate('detail', { id: duplicateWarning.id })}>
               {t('albumForm.viewExisting')}
             </button>
           </span>
-          <button class="btn-close ms-auto" onClick={() => setDuplicateWarning(null)} />
         </div>
       )}
 
@@ -848,7 +848,7 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
 
           {/* Form actions */}
           <div class="col-12 d-flex flex-column flex-sm-row gap-2 justify-content-end mb-4">
-            <button type="submit" class="btn btn-primary" disabled={saving}>
+            <button type="submit" class="btn btn-primary" disabled={saving || !!duplicateWarning}>
               {saving ? (
                 <><span class="spinner-border spinner-border-xs me-1"></span><span>{t('common.loading')}</span></>
               ) : (
@@ -856,7 +856,7 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
               )}
             </button>
             {!isEdit && (
-              <button type="button" class="btn btn-outline-secondary" disabled={saving} onClick={(e) => handleSubmit(e, true)}>
+              <button type="button" class="btn btn-outline-secondary" disabled={saving || !!duplicateWarning} onClick={(e) => handleSubmit(e, true)}>
                 {saving ? (
                   <><span class="spinner-border spinner-border-xs me-1"></span><span>{t('common.loading')}</span></>
                 ) : (
