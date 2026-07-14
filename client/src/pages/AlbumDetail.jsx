@@ -15,7 +15,7 @@ function fmt(dateStr) {
 
 export function AlbumDetail({ navigate, albumId }) {
   const { t } = useI18n();
-  const { playAlbum, current, playing, toggle } = usePlayer();
+  const { playAlbum, current, playing, toggle, toggleFavorite } = usePlayer();
   const [album, setAlbum] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -43,6 +43,16 @@ export function AlbumDetail({ navigate, albumId }) {
       return;
     }
     playAlbum(album, playableTracks.findIndex((tr) => tr.id === track.id));
+  };
+
+  const handleToggleFavorite = (track) => {
+    const next = !track.is_favorite;
+    // Optimistic local update; the context also syncs the player queue + calls the API
+    setAlbum((a) => ({
+      ...a,
+      tracks: a.tracks.map((tr) => (tr.id === track.id ? { ...tr, is_favorite: next } : tr)),
+    }));
+    toggleFavorite(track.id, next);
   };
 
   const handleFolderAssociated = (result) => {
@@ -303,7 +313,7 @@ export function AlbumDetail({ navigate, albumId }) {
                     <tr>
                       <th class="track-number-col">{t('albumDetail.trackNumber')}</th>
                       <th>{t('albumDetail.trackTitle')}</th>
-                      <th class="track-duration-col text-end">{t('albumDetail.duration')}</th>
+                      <th class="track-detail-actions-col text-end">{t('albumDetail.duration')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -323,15 +333,24 @@ export function AlbumDetail({ navigate, albumId }) {
                           )}
                         </td>
                         <td>{track.title}</td>
-                        <td class="text-end text-muted font-monospace small">
-                          <span class="me-2">{track.duration || '—'}</span>
-                          <button
-                            class="btn btn-sm btn-icon btn-ghost-secondary"
-                            onClick={() => setAddToPlaylist({ trackId: track.id })}
-                            title={t('playlists.addToPlaylist')}
-                          >
-                            <ListPlus size={14} />
-                          </button>
+                        <td class="text-end">
+                          <div class="track-actions">
+                            <span class="text-muted font-monospace small">{track.duration || '—'}</span>
+                            <button
+                              class={`btn btn-sm btn-icon ${track.is_favorite ? 'text-danger' : 'btn-ghost-secondary'}`}
+                              onClick={() => handleToggleFavorite(track)}
+                              title={track.is_favorite ? t('player.unfavorite') : t('player.favorite')}
+                            >
+                              <Heart size={14} fill={track.is_favorite ? 'currentColor' : 'none'} />
+                            </button>
+                            <button
+                              class="btn btn-sm btn-icon btn-ghost-secondary"
+                              onClick={() => setAddToPlaylist({ trackId: track.id })}
+                              title={t('playlists.addToPlaylist')}
+                            >
+                              <ListPlus size={14} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

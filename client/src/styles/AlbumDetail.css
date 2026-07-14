@@ -31,6 +31,19 @@
   width: 80px;
 }
 
+.track-detail-actions-col {
+  width: 140px;
+}
+
+/* Keep duration + action buttons on a single line */
+.track-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
 .modal-backdrop {
   position: fixed;
   top: 0;
