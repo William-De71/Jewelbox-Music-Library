@@ -397,7 +397,15 @@
     "expand": "Agrandir le lecteur",
     "collapse": "Réduire le lecteur",
     "queue": "File de lecture",
-    "goToAlbum": "Voir l'album"
+    "goToAlbum": "Voir l'album",
+    "shuffle": "Lecture aléatoire",
+    "shuffleOff": "Désactiver la lecture aléatoire",
+    "repeatOff": "Répéter : désactivé",
+    "repeatAll": "Répéter la file",
+    "repeatOne": "Répéter la piste",
+    "favorite": "Ajouter aux favoris",
+    "unfavorite": "Retirer des favoris",
+    "dynamicMix": "Mix dynamique"
   },
   "musicLibrary": {
     "title": "Bibliothèque musicale",
@@ -459,7 +467,20 @@
     "album": "Album",
     "artist": "Artiste",
     "noPlayableTracks": "Aucune piste jouable dans cette playlist",
-    "updatedAt": "Modifiée le"
+    "updatedAt": "Modifiée le",
+    "smartTitle": "Listes intelligentes",
+    "listen": "Écouter",
+    "smart": {
+      "newest": "Ajouts récents",
+      "random50": "50 pistes au hasard",
+      "ever_played": "Déjà écoutées",
+      "never_played": "Jamais écoutées",
+      "last_played": "Écoutées récemment",
+      "most_played": "Les plus écoutées",
+      "favourites": "Favoris",
+      "all_tracks": "Toutes les pistes",
+      "dynamic_mix": "Mix dynamique"
+    }
   },
   "lastfm": {
     "title": "Last.fm",

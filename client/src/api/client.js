@@ -96,6 +96,13 @@ export const api = {
   setAlbumAudioFolder: (id, folder) => request('PUT', `/player/albums/${id}/folder`, { folder }),
   clearAlbumAudioFolder: (id) => request('DELETE', `/player/albums/${id}/folder`),
   trackStreamUrl: (id) => `${BASE}/player/tracks/${id}/stream`,
+  trackPlayed: (id) => request('POST', `/player/tracks/${id}/played`),
+  setTrackFavorite: (id, is_favorite) => request('PATCH', `/player/tracks/${id}/favorite`, { is_favorite }),
+
+  // Smart playlists
+  getSmartPlaylists: () => request('GET', '/smart-playlists'),
+  getSmartPlaylist: (key, excludeIds) =>
+    request('GET', `/smart-playlists/${key}${excludeIds?.length ? `?exclude=${excludeIds.join(',')}` : ''}`),
 
   // Last.fm
   lastfmConnectUrl: () => request('GET', `/lastfm/connect?origin=${encodeURIComponent(window.location.origin)}`),

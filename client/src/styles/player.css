@@ -229,10 +229,17 @@ body.player-open .btn-scroll-top {
   align-items: center;
 }
 
+.player-view-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
 .player-view-title {
   font-size: 1.25rem;
   font-weight: 700;
-  max-width: 100%;
+  min-width: 0;
 }
 
 .player-view-progress {
@@ -432,7 +439,8 @@ body.player-open .btn-scroll-top {
   }
 
   .player-bar-volume,
-  .player-bar-volume-btn {
+  .player-bar-volume-btn,
+  .player-bar-mode-btn {
     display: none;
   }
 

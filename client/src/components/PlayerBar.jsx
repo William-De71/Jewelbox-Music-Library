@@ -1,18 +1,19 @@
 import { useI18n } from '../config/i18n/index.jsx';
 import { usePlayer } from './PlayerContext.jsx';
 import { formatTime } from '../utils/formatTime.js';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, X, Disc } from 'lucide-preact';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, X, Disc, Shuffle, Repeat, Repeat1, Heart } from 'lucide-preact';
 
 export function PlayerBar() {
   const { t } = useI18n();
   const {
-    current, playing, currentTime, duration, volume, expanded,
-    toggle, next, prev, seek, setVolume, close, setExpanded,
+    current, playing, currentTime, duration, volume, expanded, repeat, shuffle,
+    toggle, next, prev, seek, setVolume, close, setExpanded, cycleRepeat, toggleShuffle, toggleFavorite,
   } = usePlayer();
 
   if (!current) return null;
 
   const expand = () => setExpanded(true);
+  const repeatTitle = repeat === 'one' ? t('player.repeatOne') : repeat === 'all' ? t('player.repeatAll') : t('player.repeatOff');
 
   return (
     <div class="player-bar" role="region" aria-label={t('player.nowPlaying')}>
@@ -38,6 +39,14 @@ export function PlayerBar() {
 
       <div class="player-bar-center">
         <div class="player-bar-controls">
+          <button
+            class={`btn btn-icon player-bar-mode-btn ${shuffle ? 'btn-ghost-primary' : 'btn-ghost-secondary'}`}
+            onClick={toggleShuffle}
+            aria-pressed={shuffle}
+            title={shuffle ? t('player.shuffleOff') : t('player.shuffle')}
+          >
+            <Shuffle size={16} />
+          </button>
           <button class="btn btn-icon btn-ghost-secondary" onClick={prev} title={t('player.previous')}>
             <SkipBack size={18} />
           </button>
@@ -46,6 +55,14 @@ export function PlayerBar() {
           </button>
           <button class="btn btn-icon btn-ghost-secondary" onClick={next} title={t('player.next')}>
             <SkipForward size={18} />
+          </button>
+          <button
+            class={`btn btn-icon player-bar-mode-btn ${repeat !== 'off' ? 'btn-ghost-primary' : 'btn-ghost-secondary'}`}
+            onClick={cycleRepeat}
+            aria-pressed={repeat !== 'off'}
+            title={repeatTitle}
+          >
+            {repeat === 'one' ? <Repeat1 size={16} /> : <Repeat size={16} />}
           </button>
         </div>
         <div class="player-bar-progress">
@@ -65,6 +82,13 @@ export function PlayerBar() {
       </div>
 
       <div class="player-bar-right">
+        <button
+          class={`btn btn-icon player-bar-mode-btn ${current.is_favorite ? 'text-danger' : 'btn-ghost-secondary'}`}
+          onClick={() => toggleFavorite(current.id, !current.is_favorite)}
+          title={current.is_favorite ? t('player.unfavorite') : t('player.favorite')}
+        >
+          <Heart size={18} fill={current.is_favorite ? 'currentColor' : 'none'} />
+        </button>
         <button
           class="btn btn-icon btn-ghost-secondary player-bar-volume-btn"
           onClick={() => setVolume(volume > 0 ? 0 : 1)}

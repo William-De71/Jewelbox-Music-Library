@@ -4,14 +4,17 @@ import { usePlayer } from './PlayerContext.jsx';
 import { formatTime } from '../utils/formatTime.js';
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, X, Disc, ChevronDown, ListMusic,
+  Shuffle, Repeat, Repeat1, Heart, Infinity as InfinityIcon,
 } from 'lucide-preact';
 
 export function PlayerView({ navigate }) {
   const { t } = useI18n();
   const {
-    queue, index, current, playing, currentTime, duration, volume, expanded,
-    toggle, next, prev, seek, setVolume, close, setExpanded, jumpTo,
+    queue, index, current, playing, currentTime, duration, volume, expanded, repeat, shuffle, dynamicMix,
+    toggle, next, prev, seek, setVolume, close, setExpanded, jumpTo, cycleRepeat, toggleShuffle, toggleFavorite,
   } = usePlayer();
+
+  const repeatTitle = repeat === 'one' ? t('player.repeatOne') : repeat === 'all' ? t('player.repeatAll') : t('player.repeatOff');
 
   const collapseBtnRef = useRef(null);
   const activeItemRef = useRef(null);
@@ -65,7 +68,16 @@ export function PlayerView({ navigate }) {
         )}
 
         <div class="player-view-meta">
-          <div class="player-view-title text-truncate">{current.title}</div>
+          <div class="player-view-title-row">
+            <div class="player-view-title text-truncate">{current.title}</div>
+            <button
+              class={`btn btn-icon ${current.is_favorite ? 'text-danger' : 'btn-ghost-secondary'}`}
+              onClick={() => toggleFavorite(current.id, !current.is_favorite)}
+              title={current.is_favorite ? t('player.unfavorite') : t('player.favorite')}
+            >
+              <Heart size={20} fill={current.is_favorite ? 'currentColor' : 'none'} />
+            </button>
+          </div>
           <div class="text-muted text-truncate">{current.artist_name}</div>
           <button class="btn btn-link p-0 text-muted small text-truncate" onClick={goToAlbum} title={t('player.goToAlbum')}>
             {current.album_title}
@@ -88,6 +100,14 @@ export function PlayerView({ navigate }) {
         </div>
 
         <div class="player-view-controls">
+          <button
+            class={`btn btn-icon ${shuffle ? 'btn-ghost-primary' : 'btn-ghost-secondary'}`}
+            onClick={toggleShuffle}
+            aria-pressed={shuffle}
+            title={shuffle ? t('player.shuffleOff') : t('player.shuffle')}
+          >
+            <Shuffle size={20} />
+          </button>
           <button class="btn btn-icon btn-ghost-secondary" onClick={prev} title={t('player.previous')}>
             <SkipBack size={24} />
           </button>
@@ -96,6 +116,14 @@ export function PlayerView({ navigate }) {
           </button>
           <button class="btn btn-icon btn-ghost-secondary" onClick={next} title={t('player.next')}>
             <SkipForward size={24} />
+          </button>
+          <button
+            class={`btn btn-icon ${repeat !== 'off' ? 'btn-ghost-primary' : 'btn-ghost-secondary'}`}
+            onClick={cycleRepeat}
+            aria-pressed={repeat !== 'off'}
+            title={repeatTitle}
+          >
+            {repeat === 'one' ? <Repeat1 size={20} /> : <Repeat size={20} />}
           </button>
         </div>
 
@@ -121,6 +149,11 @@ export function PlayerView({ navigate }) {
 
         <div class="player-view-queue-header text-muted small">
           <ListMusic size={14} class="me-1" />{t('player.queue')} ({queue.length})
+          {dynamicMix && (
+            <span class="badge bg-primary-lt ms-2">
+              <InfinityIcon size={12} class="me-1" />{t('player.dynamicMix')}
+            </span>
+          )}
         </div>
         <ol class="player-view-queue list-unstyled">
           {queue.map((track, i) => (
