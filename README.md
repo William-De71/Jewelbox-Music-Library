@@ -53,11 +53,39 @@ Ouvrir [http://localhost:5173](http://localhost:5173)
 2. Cliquez sur **Scanner la bibliothèque** : les fichiers sont associés automatiquement aux albums de la collection grâce à leurs tags (ID3/Vorbis/FLAC), avec repli sur la structure de dossiers `Artiste/Album/NN - Titre.ext`.
 3. Pour les albums non reconnus, ouvrez la fiche album et utilisez **Associer un dossier** pour choisir manuellement le dossier correspondant (cette association survit aux scans suivants).
 
-Un bouton lecture apparaît sur les albums disposant de fichiers audio (cartes, listes et fiche album). La barre de lecture persistante en bas de page offre lecture/pause, piste précédente/suivante, avance dans la piste et volume. Les contrôles s'affichent aussi sur l'écran verrouillé (Android) et dans les notifications multimédia (GNOME) via l'API MediaSession.
+Un bouton lecture apparaît sur les albums disposant de fichiers audio (cartes, listes et fiche album). La barre de lecture persistante en bas de page offre lecture/pause, piste précédente/suivante, avance dans la piste et volume — **touchez la zone titre/pochette pour ouvrir le lecteur plein écran** (grande pochette, contrôles et file de lecture). Les contrôles s'affichent aussi sur l'écran verrouillé (Android) et dans les notifications multimédia (GNOME) via l'API MediaSession.
 
 💡 L'application est installable en PWA (menu « Installer l'application » du navigateur) sur Android comme sur le bureau (Fedora/GNOME, Chrome/Firefox).
 
 > **Docker** : montez votre musique en lecture seule (voir `docker/docker-compose.yml`, ex. `- /home/user/Musique:/music:ro`) et indiquez `/music` comme chemin de bibliothèque dans les Paramètres.
+
+### Bibliothèque sur le réseau (NAS)
+
+La bibliothèque doit être un dossier accessible par le **serveur** via le système de fichiers. Pour une musique stockée sur un NAS, montez le partage sur la machine qui héberge JewelBox, puis renseignez le point de montage dans les Paramètres :
+
+```bash
+# NFS
+sudo mount -t nfs nas:/volume/musique /mnt/musique
+
+# SMB / CIFS
+sudo mount -t cifs //nas/musique /mnt/musique -o credentials=/etc/samba/creds,ro
+
+# SSHFS
+sshfs user@nas:/musique /mnt/musique
+```
+
+Ajoutez l'entrée correspondante dans `/etc/fstab` pour un montage permanent. En Docker, montez le point de montage hôte dans le conteneur : `- /mnt/musique:/music:ro` (chemin à déclarer : `/music`). Les URL de type `smb://` ou `nfs://` ne sont pas supportées directement.
+
+### Playlists
+
+Créez des listes de lecture depuis le menu **Playlists** : ajoutez une piste ou un album entier depuis la fiche album (bouton « Ajouter à une playlist »), réordonnez les pistes, renommez, supprimez, et lancez la lecture complète. Les playlists survivent aux modifications d'albums.
+
+### Scrobbling Last.fm
+
+1. **Une seule fois (admin)** : créez une clé API sur [last.fm/api/account/create](https://www.last.fm/api/account/create) (la Callback URL peut rester vide) et renseignez la clé + le secret dans **Paramètres → Last.fm**.
+2. **Chaque utilisateur** : cliquez sur « Connecter mon compte Last.fm », autorisez l'application sur last.fm — c'est tout.
+
+Les écoutes sont scrobblées selon la règle Last.fm : piste d'au moins 30 secondes, écoutée à moitié ou pendant 4 minutes. Le « now playing » s'affiche dès le début de la lecture. Les secrets ne quittent jamais le serveur.
 
 ---
 
@@ -174,6 +202,18 @@ npm run test:coverage --workspace=server
 | `GET`    | `/api/player/browse?dir=`    | Parcourir les dossiers de la bibliothèque |
 | `PUT`    | `/api/player/albums/:id/folder` | Associer un dossier à un album        |
 | `DELETE` | `/api/player/albums/:id/folder` | Dissocier le dossier d'un album       |
+| `GET`    | `/api/playlists`             | Liste des playlists                      |
+| `POST`   | `/api/playlists`             | Créer une playlist                       |
+| `GET`    | `/api/playlists/:id`         | Détail + pistes                          |
+| `PATCH`  | `/api/playlists/:id`         | Renommer                                 |
+| `DELETE` | `/api/playlists/:id`         | Supprimer                                |
+| `POST`   | `/api/playlists/:id/tracks`  | Ajouter une piste ou un album            |
+| `PUT`    | `/api/playlists/:id/tracks`  | Réordonner les pistes                    |
+| `DELETE` | `/api/playlists/:id/tracks/:entryId` | Retirer une piste                |
+| `GET`    | `/api/lastfm/connect`        | URL d'autorisation Last.fm               |
+| `DELETE` | `/api/lastfm/session`        | Déconnecter le compte Last.fm            |
+| `POST`   | `/api/lastfm/nowplaying`     | Signaler la piste en cours               |
+| `POST`   | `/api/lastfm/scrobble`       | Scrobbler une écoute                     |
 
 ### Paramètres de `GET /api/albums`
 
