@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { databasesApi } from '../api/databases.js';
 import { useI18n } from '../config/i18n/index.jsx';
 import { api } from '../api/client.js';
-import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText } from 'lucide-preact';
+import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music } from 'lucide-preact';
 
 export function Settings({ navigate }) {
   const { t } = useI18n();
@@ -18,6 +18,11 @@ export function Settings({ navigate }) {
   const [discogsForm, setDiscogsForm] = useState({ discogs_key: '', discogs_secret: '' });
   const [discogsSaving, setDiscogsSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [musicPath, setMusicPath] = useState('');
+  const [musicPathSaving, setMusicPathSaving] = useState(false);
+  const [scanStatus, setScanStatus] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const scanTimer = useRef(null);
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
@@ -42,8 +47,65 @@ export function Settings({ navigate }) {
     loadDatabases();
     api.getSettings().then(s => {
       setDiscogsForm({ discogs_key: s.discogs_key || '', discogs_secret: s.discogs_secret || '' });
+      setMusicPath(s.music_library_path || '');
     }).catch(() => {});
+    // Resume status polling if a scan is already running server-side
+    api.playerScanStatus().then(status => {
+      setScanStatus(status);
+      if (status.running) startScanPolling();
+    }).catch(() => {});
+    return () => clearInterval(scanTimer.current);
   }, []);
+
+  const startScanPolling = () => {
+    setScanning(true);
+    clearInterval(scanTimer.current);
+    scanTimer.current = setInterval(async () => {
+      try {
+        const status = await api.playerScanStatus();
+        setScanStatus(status);
+        if (!status.running && status.finishedAt) {
+          clearInterval(scanTimer.current);
+          setScanning(false);
+          if (status.result) {
+            showToast(t('musicLibrary.scanDone', {
+              tracks: String(status.result.matched_tracks),
+              albums: String(status.result.matched_albums),
+              unmatched: String(status.result.unmatched_count),
+            }), 'success');
+          }
+        }
+      } catch {
+        clearInterval(scanTimer.current);
+        setScanning(false);
+      }
+    }, 1000);
+  };
+
+  const handleSaveMusicPath = async (e) => {
+    e.preventDefault();
+    setMusicPathSaving(true);
+    try {
+      await api.saveSettings({ music_library_path: musicPath.trim() });
+      showToast(t('musicLibrary.saved'), 'success');
+    } catch (err) {
+      showToast(err.message, 'danger');
+    } finally {
+      setMusicPathSaving(false);
+    }
+  };
+
+  const handleScan = async () => {
+    try {
+      await api.playerScan();
+      setScanStatus(null);
+      startScanPolling();
+    } catch (err) {
+      if (err.message.includes('already running')) showToast(t('musicLibrary.scanAlreadyRunning'), 'warning');
+      else if (err.message.includes('not configured')) showToast(t('musicLibrary.pathNotConfigured'), 'danger');
+      else showToast(err.message, 'danger');
+    }
+  };
 
   const handleImport = async (e) => {
     const file = e.target.files?.[0];
@@ -333,6 +395,96 @@ export function Settings({ navigate }) {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Music library section */}
+        <div class="row mt-4">
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title fs-5 mb-0">
+                  <Music size={18} class="me-2" />
+                  {t('musicLibrary.title')}
+                </h3>
+              </div>
+              <div class="card-body">
+                <p class="text-muted small mb-3">{t('musicLibrary.description')}</p>
+
+                <form onSubmit={handleSaveMusicPath}>
+                  <div class="row g-3 align-items-end">
+                    <div class="col-md-8">
+                      <label class="form-label">{t('musicLibrary.pathLabel')}</label>
+                      <input
+                        type="text"
+                        class="form-control font-monospace"
+                        placeholder={t('musicLibrary.pathPlaceholder')}
+                        value={musicPath}
+                        onInput={(e) => setMusicPath(e.target.value)}
+                        autocomplete="off"
+                      />
+                    </div>
+                    <div class="col-md-4 d-flex gap-2">
+                      <button type="submit" class="btn btn-primary" disabled={musicPathSaving}>
+                        {musicPathSaving
+                          ? <span class="spinner-border spinner-border-sm me-2" />
+                          : <Check size={16} class="me-1" />}
+                        {t('musicLibrary.save')}
+                      </button>
+                      <button type="button" class="btn btn-outline-primary" onClick={handleScan} disabled={scanning || !musicPath.trim()}>
+                        {scanning
+                          ? <><span class="spinner-border spinner-border-sm me-2" />{t('musicLibrary.scanning')}</>
+                          : <><FolderSearch size={16} class="me-1" />{t('musicLibrary.scan')}</>}
+                      </button>
+                    </div>
+                  </div>
+                </form>
+
+                {scanning && scanStatus?.progress?.files_total > 0 && (
+                  <div class="mt-3">
+                    <div class="progress">
+                      <div
+                        class="progress-bar progress-bar-striped progress-bar-animated"
+                        style={{ width: `${Math.round((scanStatus.progress.files_scanned / scanStatus.progress.files_total) * 100)}%` }}
+                      />
+                    </div>
+                    <div class="text-muted small mt-1">
+                      {scanStatus.progress.files_scanned} / {scanStatus.progress.files_total}
+                    </div>
+                  </div>
+                )}
+
+                {!scanning && scanStatus?.result && (
+                  <div class="mt-3">
+                    <div class="alert alert-info mb-2">
+                      {t('musicLibrary.scanDone', {
+                        tracks: String(scanStatus.result.matched_tracks),
+                        albums: String(scanStatus.result.matched_albums),
+                        unmatched: String(scanStatus.result.unmatched_count),
+                      })}
+                    </div>
+                    {scanStatus.result.errors?.length > 0 && (
+                      <div class="alert alert-warning mb-2">
+                        <strong>{t('musicLibrary.scanErrors')} :</strong>
+                        <ul class="mb-0 mt-1">
+                          {scanStatus.result.errors.map((err, i) => <li key={i}>{err}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                    {scanStatus.result.unmatched_files?.length > 0 && (
+                      <details class="text-muted small">
+                        <summary class="cursor-pointer">
+                          {t('musicLibrary.unmatchedFiles')} ({scanStatus.result.unmatched_count})
+                        </summary>
+                        <ul class="mt-2 font-monospace">
+                          {scanStatus.result.unmatched_files.map((file, i) => <li key={i}>{file}</li>)}
+                        </ul>
+                      </details>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
