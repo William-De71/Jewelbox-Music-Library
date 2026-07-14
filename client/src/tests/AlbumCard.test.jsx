@@ -2,8 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/preact';
 import { AlbumCard } from '../components/AlbumCard.jsx';
 import { I18nProvider } from '../config/i18n/index.jsx';
+import { PlayerProvider } from '../components/PlayerContext.jsx';
 
-const wrap = (ui) => render(<I18nProvider>{ui}</I18nProvider>);
+const wrap = (ui) => render(<I18nProvider><PlayerProvider>{ui}</PlayerProvider></I18nProvider>);
 
 const baseAlbum = {
   id: 1,

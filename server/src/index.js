@@ -9,6 +9,10 @@ import Database from 'better-sqlite3';
 import { albumRoutes } from './routes/albums.js';
 import { searchRoutes } from './routes/search.js';
 import { versionRoutes } from './routes/version.js';
+import { playerRoutes } from './routes/player.js';
+import { playlistRoutes } from './routes/playlists.js';
+import { lastfmRoutes } from './routes/lastfm.js';
+import { smartPlaylistRoutes } from './routes/smartPlaylists.js';
 import { createDatabase, setActiveDatabase, deleteDatabase } from './db/manager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -67,6 +71,18 @@ await fastify.register(albumRoutes, { prefix: '/api' });
 
 // Register search routes
 await fastify.register(searchRoutes, { prefix: '/api' });
+
+// Register audio player routes
+await fastify.register(playerRoutes, { prefix: '/api' });
+
+// Register playlist routes
+await fastify.register(playlistRoutes, { prefix: '/api' });
+
+// Register Last.fm scrobbling routes
+await fastify.register(lastfmRoutes, { prefix: '/api' });
+
+// Register smart playlist routes
+await fastify.register(smartPlaylistRoutes, { prefix: '/api' });
 
 // Register version routes
 await fastify.register(versionRoutes);
@@ -319,12 +335,17 @@ fastify.delete('/api/databases/:id', async (req, reply) => {
 });
 
 // Get settings
+// Secrets never leave the server; the client only sees "configured" booleans.
+const HIDDEN_SETTINGS = ['lastfm_api_secret', 'lastfm_session_key'];
+
 fastify.get('/api/settings', async (req, reply) => {
   try {
     const db = getManagerDb();
     const rows = db.prepare('SELECT key, value FROM settings').all();
     const settings = {};
-    rows.forEach(r => { settings[r.key] = r.value; });
+    rows.forEach(r => { if (!HIDDEN_SETTINGS.includes(r.key)) settings[r.key] = r.value; });
+    settings.lastfm_connected = rows.some(r => r.key === 'lastfm_session_key' && r.value);
+    settings.lastfm_api_secret_set = rows.some(r => r.key === 'lastfm_api_secret' && r.value);
     return settings;
   } catch (err) {
     return reply.code(500).send({ error: err.message });
@@ -340,7 +361,13 @@ fastify.put('/api/settings', async (req, reply) => {
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
     `);
     const entries = Object.entries(req.body);
-    entries.forEach(([key, value]) => stmt.run(key, value ?? ''));
+    entries.forEach(([key, value]) => {
+      // Synthetic flags from GET /api/settings are never stored,
+      // and an empty secret must not erase the configured one.
+      if (key === 'lastfm_connected' || key === 'lastfm_api_secret_set') return;
+      if (key === 'lastfm_api_secret' && !value) return;
+      stmt.run(key, value ?? '');
+    });
     return { message: 'Settings saved' };
   } catch (err) {
     return reply.code(500).send({ error: err.message });

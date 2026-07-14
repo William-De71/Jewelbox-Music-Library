@@ -24,6 +24,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Never serve the SPA shell for API/file URLs (audio streams, covers)
+        navigateFallbackDenylist: [/^\/api\//, /^\/covers\//],
         runtimeCaching: [
           {
             urlPattern: /^\/api\/albums/,

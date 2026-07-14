@@ -1,12 +1,14 @@
 import { StarRating } from './StarRating.jsx';
 import { useI18n } from '../config/i18n/index.jsx';
-import { Share } from 'lucide-preact';
+import { usePlayer } from './PlayerContext.jsx';
+import { Share, Play } from 'lucide-preact';
 import { getPlaceholderHTML } from '../utils/placeholder.js';
 
 
 export function AlbumCard({ album, onClick, onEdit, onDelete, onLend, onRate }) {
   const { t } = useI18n();
-  
+  const { playAlbumById } = usePlayer();
+
   return (
     <div class="card shadow-sm h-100">
       {/* Header with cover image and "lent" badge */}
@@ -41,6 +43,16 @@ export function AlbumCard({ album, onClick, onEdit, onDelete, onLend, onRate }) 
             <Share size={16} class="me-1" />
             {t('card.lentBadge')}{album.lent_to ? ` ${t('card.lentTo', { name: album.lent_to })}` : ''}
           </span>
+        )}
+
+        {album.has_audio && (
+          <button
+            class="btn btn-primary btn-icon album-card-play"
+            title={t('player.playAlbum')}
+            onClick={(e) => { e.stopPropagation(); playAlbumById(album.id); }}
+          >
+            <Play size={18} />
+          </button>
         )}
       </div>
 

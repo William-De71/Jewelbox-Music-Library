@@ -26,7 +26,48 @@ function runMigrations(database) {
     database.exec("ALTER TABLE albums ADD COLUMN lent_at TEXT");
     console.log('[Migration] Added lent_at column to albums');
   }
+  if (!cols.includes('audio_folder')) {
+    database.exec("ALTER TABLE albums ADD COLUMN audio_folder TEXT");
+    console.log('[Migration] Added audio_folder column to albums');
+  }
+  const trackCols = database.prepare("PRAGMA table_info(tracks)").all().map(c => c.name);
+  if (!trackCols.includes('file_path')) {
+    database.exec("ALTER TABLE tracks ADD COLUMN file_path TEXT");
+    console.log('[Migration] Added file_path column to tracks');
+  }
+  if (!trackCols.includes('play_count')) {
+    database.exec("ALTER TABLE tracks ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0");
+    console.log('[Migration] Added play_count column to tracks');
+  }
+  if (!trackCols.includes('last_played_at')) {
+    database.exec("ALTER TABLE tracks ADD COLUMN last_played_at TEXT");
+    console.log('[Migration] Added last_played_at column to tracks');
+  }
+  if (!trackCols.includes('is_favorite')) {
+    database.exec("ALTER TABLE tracks ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0 CHECK(is_favorite IN (0,1))");
+    console.log('[Migration] Added is_favorite column to tracks');
+  }
   const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(t => t.name);
+  if (!tables.includes('playlists')) {
+    database.exec(`
+      CREATE TABLE playlists (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE playlist_tracks (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+        track_id    INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL,
+        added_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_playlist_tracks_playlist ON playlist_tracks(playlist_id, position);
+      CREATE INDEX idx_playlist_tracks_track    ON playlist_tracks(track_id);
+    `);
+    console.log('[Migration] Created playlists tables');
+  }
   if (!tables.includes('loan_history')) {
     database.exec(`
       CREATE TABLE loan_history (
@@ -63,6 +104,7 @@ export function getDb() {
     }
     
     db = new Database(activeDb.path);
+    db.pragma('foreign_keys = ON');
     currentDbPath = activeDb.path;
     runMigrations(db);
   }

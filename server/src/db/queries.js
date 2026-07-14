@@ -40,9 +40,10 @@ const ALBUM_SELECT = `
   SELECT
     a.id, a.title, a.year, a.genre, a.total_duration, a.ean,
     a.rating, a.cover_url, a.notes, a.is_lent, a.lent_to, a.lent_at, a.is_wanted,
-    a.created_at, a.updated_at,
+    a.audio_folder, a.created_at, a.updated_at,
     ar.id   AS artist_id,   ar.name  AS artist_name,
-    l.id    AS label_id,    l.name   AS label_name
+    l.id    AS label_id,    l.name   AS label_name,
+    EXISTS(SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.file_path IS NOT NULL) AS has_audio
   FROM albums a
   JOIN artists ar ON ar.id = a.artist_id
   LEFT JOIN labels l ON l.id = a.label_id
@@ -64,6 +65,8 @@ function mapAlbum(row) {
     lent_to: row.lent_to,
     lent_at: row.lent_at ?? null,
     is_wanted: Boolean(row.is_wanted),
+    audio_folder: row.audio_folder ?? null,
+    has_audio: Boolean(row.has_audio),
     created_at: row.created_at,
     updated_at: row.updated_at,
     artist: { id: row.artist_id, name: row.artist_name },
@@ -117,7 +120,18 @@ export function getAlbumById(id) {
   const db = getDb();
   const album = mapAlbum(db.prepare(`${ALBUM_SELECT} WHERE a.id = ?`).get(id));
   if (!album) return null;
-  album.tracks = db.prepare('SELECT id, position, title, duration FROM tracks WHERE album_id = ? ORDER BY position').all(id);
+  album.tracks = db
+    .prepare('SELECT id, position, title, duration, file_path, play_count, is_favorite FROM tracks WHERE album_id = ? ORDER BY position')
+    .all(id)
+    .map(t => ({
+      id: t.id,
+      position: t.position,
+      title: t.title,
+      duration: t.duration,
+      has_file: t.file_path != null,
+      play_count: t.play_count,
+      is_favorite: Boolean(t.is_favorite),
+    }));
   return album;
 }
 
@@ -185,16 +199,44 @@ export function updateAlbum(id, data) {
   fields.push("updated_at = datetime('now')");
   params.push(id);
 
-  const updateTracks = db.prepare('DELETE FROM tracks WHERE album_id = ?');
   const insertTrack = db.prepare(
-    'INSERT INTO tracks (album_id, position, title, duration) VALUES (?, ?, ?, ?)'
+    'INSERT INTO tracks (album_id, position, title, duration, file_path) VALUES (?, ?, ?, ?, ?)'
   );
+  const updateTrack = db.prepare('UPDATE tracks SET position = ?, title = ?, duration = ? WHERE id = ?');
+  const deleteTrack = db.prepare('DELETE FROM tracks WHERE id = ?');
+  const hasPlaylistTracks = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='playlist_tracks'")
+    .get();
+  const deleteTrackPlaylistEntries = hasPlaylistTracks
+    ? db.prepare('DELETE FROM playlist_tracks WHERE track_id = ?')
+    : null;
 
   const run = db.transaction(() => {
     db.prepare(`UPDATE albums SET ${fields.join(', ')} WHERE id = ?`).run(...params);
     if (data.tracks) {
-      updateTracks.run(id);
-      data.tracks.forEach((t, i) => insertTrack.run(id, t.position ?? i + 1, t.title, t.duration || null));
+      // Diff instead of delete+reinsert: track ids must survive album edits so
+      // playlist entries and audio file associations stay valid.
+      const oldTracks = db.prepare('SELECT id, position, title FROM tracks WHERE album_id = ?').all(id);
+      const consumed = new Set();
+      const claim = (position, title) => {
+        let match = oldTracks.find(o => !consumed.has(o.id) && o.position === position);
+        if (!match) match = oldTracks.find(o => !consumed.has(o.id) && o.title === title);
+        if (match) consumed.add(match.id);
+        return match ?? null;
+      };
+      data.tracks.forEach((t, i) => {
+        const position = t.position ?? i + 1;
+        const match = claim(position, t.title);
+        if (match) updateTrack.run(position, t.title, t.duration || null, match.id);
+        else insertTrack.run(id, position, t.title, t.duration || null, null);
+      });
+      for (const old of oldTracks) {
+        if (!consumed.has(old.id)) {
+          // Defense in depth: FKs may have been off on connections opened in the past.
+          if (deleteTrackPlaylistEntries) deleteTrackPlaylistEntries.run(old.id);
+          deleteTrack.run(old.id);
+        }
+      }
     }
   });
   run();
@@ -281,6 +323,229 @@ export function getStats() {
     total_duration_mins:  Math.round(total_minutes % 60),
     by_genre, by_decade, top_artists, top_labels,
   };
+}
+
+// ── Audio player ──────────────────────────────────────────────────────────────
+
+export function getAlbumsForMatching({ manualOnly = false } = {}) {
+  const db = getDb();
+  const where = manualOnly ? 'WHERE a.audio_folder IS NOT NULL' : '';
+  const albums = db.prepare(`
+    SELECT a.id, a.title, a.audio_folder, ar.name AS artist_name
+    FROM albums a
+    JOIN artists ar ON ar.id = a.artist_id
+    ${where}
+  `).all();
+  const tracksStmt = db.prepare('SELECT id, position, title FROM tracks WHERE album_id = ? ORDER BY position');
+  for (const album of albums) {
+    album.tracks = tracksStmt.all(album.id);
+  }
+  return albums;
+}
+
+export function setTrackFilePaths(entries) {
+  const db = getDb();
+  const update = db.prepare('UPDATE tracks SET file_path = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const { trackId, filePath } of entries) update.run(filePath, trackId);
+  })();
+}
+
+export function clearAllFilePaths({ keepManual = true } = {}) {
+  const db = getDb();
+  const where = keepManual
+    ? 'WHERE album_id IN (SELECT id FROM albums WHERE audio_folder IS NULL)'
+    : '';
+  db.prepare(`UPDATE tracks SET file_path = NULL ${where}`).run();
+}
+
+export function setAlbumAudioFolder(albumId, folder) {
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare("UPDATE albums SET audio_folder = ?, updated_at = datetime('now') WHERE id = ?").run(folder, albumId);
+    if (folder === null) {
+      db.prepare('UPDATE tracks SET file_path = NULL WHERE album_id = ?').run(albumId);
+    }
+  })();
+}
+
+export function getTrackForStream(trackId) {
+  return getDb().prepare('SELECT id, file_path FROM tracks WHERE id = ?').get(trackId) || null;
+}
+
+export function markTrackPlayed(trackId) {
+  const { changes } = getDb()
+    .prepare("UPDATE tracks SET play_count = play_count + 1, last_played_at = datetime('now') WHERE id = ?")
+    .run(trackId);
+  return changes > 0;
+}
+
+export function setTrackFavorite(trackId, isFavorite) {
+  const { changes } = getDb()
+    .prepare('UPDATE tracks SET is_favorite = ? WHERE id = ?')
+    .run(isFavorite ? 1 : 0, trackId);
+  if (!changes) return null;
+  return { id: trackId, is_favorite: Boolean(isFavorite) };
+}
+
+export function getTrackWithAlbum(trackId) {
+  return getDb().prepare(`
+    SELECT t.id, t.title, t.duration, a.title AS album_title, ar.name AS artist_name
+    FROM tracks t
+    JOIN albums a ON a.id = t.album_id
+    JOIN artists ar ON ar.id = a.artist_id
+    WHERE t.id = ?
+  `).get(trackId) || null;
+}
+
+// ── Queue items ──────────────────────────────────────────────────────────────
+// Shared shape between playlists and smart playlists: what the client
+// PlayerContext expects as a playable queue entry.
+
+export const QUEUE_TRACK_FIELDS = `
+  t.id, t.title, t.duration, (t.file_path IS NOT NULL) AS has_file,
+  t.play_count, t.is_favorite,
+  a.id AS album_id, a.title AS album_title, a.cover_url,
+  ar.name AS artist_name`;
+
+export function mapQueueTrack(row, i) {
+  return {
+    position: i + 1,
+    id: row.id,
+    title: row.title,
+    duration: row.duration,
+    has_file: Boolean(row.has_file),
+    play_count: row.play_count,
+    is_favorite: Boolean(row.is_favorite),
+    album_id: row.album_id,
+    album_title: row.album_title,
+    artist_name: row.artist_name,
+    cover_url: row.cover_url,
+  };
+}
+
+// ── Playlists ─────────────────────────────────────────────────────────────────
+
+// "3:45" -> 225, "1:02:03" -> 3723, anything else -> null
+export function durationToSeconds(text) {
+  if (!text) return null;
+  const parts = String(text).trim().split(':').map(Number);
+  if (parts.some(p => !Number.isFinite(p) || p < 0)) return null;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return null;
+}
+
+export function getPlaylists() {
+  const db = getDb();
+  const playlists = db.prepare(`
+    SELECT p.id, p.name, p.created_at, p.updated_at, COUNT(pt.id) AS track_count
+    FROM playlists p
+    LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
+    GROUP BY p.id
+    ORDER BY p.name COLLATE NOCASE
+  `).all();
+  const durations = db.prepare(`
+    SELECT pt.playlist_id, t.duration
+    FROM playlist_tracks pt
+    JOIN tracks t ON t.id = pt.track_id
+  `).all();
+  const totals = new Map();
+  for (const { playlist_id, duration } of durations) {
+    const seconds = durationToSeconds(duration);
+    if (seconds) totals.set(playlist_id, (totals.get(playlist_id) || 0) + seconds);
+  }
+  return playlists.map(p => ({ ...p, total_duration_seconds: totals.get(p.id) || 0 }));
+}
+
+export function getPlaylistById(id) {
+  const db = getDb();
+  const playlist = db.prepare('SELECT id, name, created_at, updated_at FROM playlists WHERE id = ?').get(id);
+  if (!playlist) return null;
+  // Tracks are shaped like PlayerContext queue items so the client can play them as-is.
+  playlist.tracks = db.prepare(`
+    SELECT pt.id AS entry_id, ${QUEUE_TRACK_FIELDS}
+    FROM playlist_tracks pt
+    JOIN tracks t ON t.id = pt.track_id
+    JOIN albums a ON a.id = t.album_id
+    JOIN artists ar ON ar.id = a.artist_id
+    WHERE pt.playlist_id = ?
+    ORDER BY pt.position
+  `).all(id).map((row, i) => ({ entry_id: row.entry_id, ...mapQueueTrack(row, i) }));
+  return playlist;
+}
+
+export function createPlaylist(name) {
+  const { lastInsertRowid } = getDb().prepare('INSERT INTO playlists (name) VALUES (?)').run(name);
+  return getPlaylistById(lastInsertRowid);
+}
+
+export function renamePlaylist(id, name) {
+  const { changes } = getDb()
+    .prepare("UPDATE playlists SET name = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(name, id);
+  return changes > 0 ? getPlaylistById(id) : null;
+}
+
+export function deletePlaylist(id) {
+  const db = getDb();
+  let deleted = false;
+  db.transaction(() => {
+    db.prepare('DELETE FROM playlist_tracks WHERE playlist_id = ?').run(id);
+    deleted = db.prepare('DELETE FROM playlists WHERE id = ?').run(id).changes > 0;
+  })();
+  return deleted;
+}
+
+export function addTracksToPlaylist(playlistId, trackIds) {
+  const db = getDb();
+  const insert = db.prepare('INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (?, ?, ?)');
+  db.transaction(() => {
+    let position = db
+      .prepare('SELECT COALESCE(MAX(position), 0) AS max FROM playlist_tracks WHERE playlist_id = ?')
+      .get(playlistId).max;
+    for (const trackId of trackIds) insert.run(playlistId, trackId, ++position);
+    db.prepare("UPDATE playlists SET updated_at = datetime('now') WHERE id = ?").run(playlistId);
+  })();
+  return trackIds.length;
+}
+
+export function removePlaylistEntry(playlistId, entryId) {
+  const { changes } = getDb()
+    .prepare('DELETE FROM playlist_tracks WHERE id = ? AND playlist_id = ?')
+    .run(entryId, playlistId);
+  return changes > 0;
+}
+
+// entryIds = complete ordered list of playlist_tracks.id; returns false if the sets differ
+export function reorderPlaylist(playlistId, entryIds) {
+  const db = getDb();
+  const existing = db
+    .prepare('SELECT id FROM playlist_tracks WHERE playlist_id = ?')
+    .all(playlistId)
+    .map(r => r.id);
+  if (existing.length !== entryIds.length) return false;
+  const existingSet = new Set(existing);
+  if (!entryIds.every(id => existingSet.has(id))) return false;
+  if (new Set(entryIds).size !== entryIds.length) return false;
+
+  const update = db.prepare('UPDATE playlist_tracks SET position = ? WHERE id = ? AND playlist_id = ?');
+  db.transaction(() => {
+    entryIds.forEach((entryId, i) => update.run(i + 1, entryId, playlistId));
+    db.prepare("UPDATE playlists SET updated_at = datetime('now') WHERE id = ?").run(playlistId);
+  })();
+  return true;
+}
+
+export function getTrackIdsForAlbum(albumId) {
+  return getDb()
+    .prepare('SELECT id FROM tracks WHERE album_id = ? ORDER BY position')
+    .all(albumId)
+    .map(r => r.id);
+}
+
+export function trackExists(trackId) {
+  return Boolean(getDb().prepare('SELECT 1 FROM tracks WHERE id = ?').get(trackId));
 }
 
 // ── Loan History ──────────────────────────────────────────────────────────────

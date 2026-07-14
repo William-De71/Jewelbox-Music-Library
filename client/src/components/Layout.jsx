@@ -2,6 +2,8 @@ import { useState, useEffect } from 'preact/hooks';
 import { useI18n } from '../config/i18n/index.jsx';
 import { Header } from './Header.jsx';
 import { TopMenu } from './TopMenu.jsx';
+import { PlayerBar } from './PlayerBar.jsx';
+import { PlayerView } from './PlayerView.jsx';
 import { ArrowUp } from 'lucide-preact';
 
 export function Layout({ children, navigate, currentPage }) {
@@ -44,9 +46,11 @@ export function Layout({ children, navigate, currentPage }) {
       <main class="main-content">
         {children}
       </main>
+      <PlayerBar />
+      <PlayerView navigate={navigate} />
       {showScrollTop && (
         <button
-          class="btn btn-primary position-fixed bottom-0 end-0 m-4 rounded-circle shadow"
+          class="btn btn-primary btn-scroll-top position-fixed bottom-0 end-0 m-4 rounded-circle shadow"
           style={{ width: 48, height: 48, zIndex: 1000 }}
           onClick={scrollToTop}
           title={t('common.scrollToTop')}

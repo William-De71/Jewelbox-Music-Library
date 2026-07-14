@@ -10,6 +10,9 @@ services:
       - "3001:3001"
     volumes:
       - jewelbox_data:/app/server/data
+      # Music library (read-only) for the built-in audio player.
+      # Uncomment and adapt, then set "/music" as the library path in Settings.
+      # - /path/to/your/music:/music:ro
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
