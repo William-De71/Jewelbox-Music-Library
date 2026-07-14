@@ -9,6 +9,7 @@ import Database from 'better-sqlite3';
 import { albumRoutes } from './routes/albums.js';
 import { searchRoutes } from './routes/search.js';
 import { versionRoutes } from './routes/version.js';
+import { playerRoutes } from './routes/player.js';
 import { createDatabase, setActiveDatabase, deleteDatabase } from './db/manager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -67,6 +68,9 @@ await fastify.register(albumRoutes, { prefix: '/api' });
 
 // Register search routes
 await fastify.register(searchRoutes, { prefix: '/api' });
+
+// Register audio player routes
+await fastify.register(playerRoutes, { prefix: '/api' });
 
 // Register version routes
 await fastify.register(versionRoutes);
