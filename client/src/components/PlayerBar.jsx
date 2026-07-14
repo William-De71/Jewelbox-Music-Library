@@ -1,41 +1,36 @@
 import { useI18n } from '../config/i18n/index.jsx';
 import { usePlayer } from './PlayerContext.jsx';
+import { formatTime } from '../utils/formatTime.js';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, X, Disc } from 'lucide-preact';
 
-function formatTime(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-export function PlayerBar({ navigate }) {
+export function PlayerBar() {
   const { t } = useI18n();
   const {
-    current, playing, currentTime, duration, volume,
-    toggle, next, prev, seek, setVolume, close,
+    current, playing, currentTime, duration, volume, expanded,
+    toggle, next, prev, seek, setVolume, close, setExpanded,
   } = usePlayer();
 
   if (!current) return null;
 
-  const goToAlbum = () => navigate('detail', { id: current.album_id });
+  const expand = () => setExpanded(true);
 
   return (
     <div class="player-bar" role="region" aria-label={t('player.nowPlaying')}>
-      <div class="player-bar-info">
+      <div
+        class="player-bar-info cursor-pointer"
+        role="button"
+        aria-expanded={expanded}
+        title={t('player.expand')}
+        onClick={expand}
+      >
         {current.cover_url ? (
-          <img
-            class="player-bar-cover cursor-pointer"
-            src={current.cover_url}
-            alt={current.album_title}
-            onClick={goToAlbum}
-          />
+          <img class="player-bar-cover" src={current.cover_url} alt={current.album_title} />
         ) : (
-          <div class="player-bar-cover player-bar-cover-placeholder cursor-pointer" onClick={goToAlbum}>
+          <div class="player-bar-cover player-bar-cover-placeholder">
             <Disc size={24} />
           </div>
         )}
-        <div class="player-bar-meta cursor-pointer" onClick={goToAlbum}>
+        <div class="player-bar-meta">
           <div class="player-bar-title text-truncate">{current.title}</div>
           <div class="player-bar-artist text-muted text-truncate">{current.artist_name}</div>
         </div>

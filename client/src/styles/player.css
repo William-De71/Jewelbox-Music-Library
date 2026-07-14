@@ -159,6 +159,161 @@ body.player-open .btn-scroll-top {
   background: var(--tblr-border-color);
 }
 
+/* Fullscreen player view (mobile + desktop) */
+.player-view {
+  position: fixed;
+  inset: 0;
+  z-index: 1040;
+  height: 100dvh;
+  background: var(--tblr-bg-surface);
+  display: flex;
+  justify-content: center;
+  padding: calc(0.5rem + env(safe-area-inset-top)) 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  animation: player-view-in 0.25s ease-out;
+}
+
+@keyframes player-view-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-view { animation: none; }
+}
+
+[data-bs-theme="dark"] .player-view {
+  background: var(--jewelbox-bg-dark);
+}
+
+.player-view-content {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.player-view-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.player-view-cover {
+  width: min(60vw, 280px);
+  aspect-ratio: 1;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+}
+
+.player-view-cover-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tblr-bg-surface-secondary);
+  color: var(--tblr-secondary);
+  border: 1px solid var(--tblr-border-color);
+}
+
+.player-view-meta {
+  text-align: center;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.player-view-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  max-width: 100%;
+}
+
+.player-view-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.player-view-controls {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.player-view-controls .btn-icon {
+  border: none;
+}
+
+.player-view-toggle {
+  border-radius: 50%;
+  width: 3.5rem;
+  height: 3.5rem;
+}
+
+.player-view-volume {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 60%;
+}
+
+.player-view-queue-header {
+  width: 100%;
+  border-top: 1px solid var(--tblr-border-color);
+  padding-top: 0.5rem;
+}
+
+.player-view-queue {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.player-view-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border: none;
+  background: none;
+  color: inherit;
+  border-radius: 4px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.player-view-queue-item:hover {
+  background: var(--tblr-bg-surface-secondary);
+}
+
+.player-view-queue li.active .player-view-queue-item {
+  color: var(--jewelbox-primary);
+  font-weight: 600;
+}
+
+.player-view-queue-num {
+  min-width: 1.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .player-view-volume {
+    display: none;
+  }
+}
+
 /* Play button overlay on album cards */
 .album-card-play {
   position: absolute;
