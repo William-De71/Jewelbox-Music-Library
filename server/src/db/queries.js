@@ -40,9 +40,10 @@ const ALBUM_SELECT = `
   SELECT
     a.id, a.title, a.year, a.genre, a.total_duration, a.ean,
     a.rating, a.cover_url, a.notes, a.is_lent, a.lent_to, a.lent_at, a.is_wanted,
-    a.created_at, a.updated_at,
+    a.audio_folder, a.created_at, a.updated_at,
     ar.id   AS artist_id,   ar.name  AS artist_name,
-    l.id    AS label_id,    l.name   AS label_name
+    l.id    AS label_id,    l.name   AS label_name,
+    EXISTS(SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.file_path IS NOT NULL) AS has_audio
   FROM albums a
   JOIN artists ar ON ar.id = a.artist_id
   LEFT JOIN labels l ON l.id = a.label_id
@@ -64,6 +65,8 @@ function mapAlbum(row) {
     lent_to: row.lent_to,
     lent_at: row.lent_at ?? null,
     is_wanted: Boolean(row.is_wanted),
+    audio_folder: row.audio_folder ?? null,
+    has_audio: Boolean(row.has_audio),
     created_at: row.created_at,
     updated_at: row.updated_at,
     artist: { id: row.artist_id, name: row.artist_name },
@@ -117,7 +120,10 @@ export function getAlbumById(id) {
   const db = getDb();
   const album = mapAlbum(db.prepare(`${ALBUM_SELECT} WHERE a.id = ?`).get(id));
   if (!album) return null;
-  album.tracks = db.prepare('SELECT id, position, title, duration FROM tracks WHERE album_id = ? ORDER BY position').all(id);
+  album.tracks = db
+    .prepare('SELECT id, position, title, duration, file_path FROM tracks WHERE album_id = ? ORDER BY position')
+    .all(id)
+    .map(t => ({ id: t.id, position: t.position, title: t.title, duration: t.duration, has_file: t.file_path != null }));
   return album;
 }
 
@@ -187,14 +193,24 @@ export function updateAlbum(id, data) {
 
   const updateTracks = db.prepare('DELETE FROM tracks WHERE album_id = ?');
   const insertTrack = db.prepare(
-    'INSERT INTO tracks (album_id, position, title, duration) VALUES (?, ?, ?, ?)'
+    'INSERT INTO tracks (album_id, position, title, duration, file_path) VALUES (?, ?, ?, ?, ?)'
   );
 
   const run = db.transaction(() => {
     db.prepare(`UPDATE albums SET ${fields.join(', ')} WHERE id = ?`).run(...params);
     if (data.tracks) {
+      // Tracks are replaced wholesale: carry audio file associations over by position, then title.
+      const oldTracks = db.prepare('SELECT position, title, file_path FROM tracks WHERE album_id = ? AND file_path IS NOT NULL').all(id);
+      const findFilePath = (position, title) => {
+        const byPosition = oldTracks.find(o => o.position === position);
+        if (byPosition) return byPosition.file_path;
+        return oldTracks.find(o => o.title === title)?.file_path ?? null;
+      };
       updateTracks.run(id);
-      data.tracks.forEach((t, i) => insertTrack.run(id, t.position ?? i + 1, t.title, t.duration || null));
+      data.tracks.forEach((t, i) => {
+        const position = t.position ?? i + 1;
+        insertTrack.run(id, position, t.title, t.duration || null, findFilePath(position, t.title));
+      });
     }
   });
   run();
@@ -281,6 +297,54 @@ export function getStats() {
     total_duration_mins:  Math.round(total_minutes % 60),
     by_genre, by_decade, top_artists, top_labels,
   };
+}
+
+// ── Audio player ──────────────────────────────────────────────────────────────
+
+export function getAlbumsForMatching({ manualOnly = false } = {}) {
+  const db = getDb();
+  const where = manualOnly ? 'WHERE a.audio_folder IS NOT NULL' : '';
+  const albums = db.prepare(`
+    SELECT a.id, a.title, a.audio_folder, ar.name AS artist_name
+    FROM albums a
+    JOIN artists ar ON ar.id = a.artist_id
+    ${where}
+  `).all();
+  const tracksStmt = db.prepare('SELECT id, position, title FROM tracks WHERE album_id = ? ORDER BY position');
+  for (const album of albums) {
+    album.tracks = tracksStmt.all(album.id);
+  }
+  return albums;
+}
+
+export function setTrackFilePaths(entries) {
+  const db = getDb();
+  const update = db.prepare('UPDATE tracks SET file_path = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const { trackId, filePath } of entries) update.run(filePath, trackId);
+  })();
+}
+
+export function clearAllFilePaths({ keepManual = true } = {}) {
+  const db = getDb();
+  const where = keepManual
+    ? 'WHERE album_id IN (SELECT id FROM albums WHERE audio_folder IS NULL)'
+    : '';
+  db.prepare(`UPDATE tracks SET file_path = NULL ${where}`).run();
+}
+
+export function setAlbumAudioFolder(albumId, folder) {
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare("UPDATE albums SET audio_folder = ?, updated_at = datetime('now') WHERE id = ?").run(folder, albumId);
+    if (folder === null) {
+      db.prepare('UPDATE tracks SET file_path = NULL WHERE album_id = ?').run(albumId);
+    }
+  })();
+}
+
+export function getTrackForStream(trackId) {
+  return getDb().prepare('SELECT id, file_path FROM tracks WHERE id = ?').get(trackId) || null;
 }
 
 // ── Loan History ──────────────────────────────────────────────────────────────
