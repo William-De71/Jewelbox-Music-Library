@@ -36,6 +36,26 @@ function runMigrations(database) {
     console.log('[Migration] Added file_path column to tracks');
   }
   const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(t => t.name);
+  if (!tables.includes('playlists')) {
+    database.exec(`
+      CREATE TABLE playlists (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        name       TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE playlist_tracks (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+        track_id    INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+        position    INTEGER NOT NULL,
+        added_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_playlist_tracks_playlist ON playlist_tracks(playlist_id, position);
+      CREATE INDEX idx_playlist_tracks_track    ON playlist_tracks(track_id);
+    `);
+    console.log('[Migration] Created playlists tables');
+  }
   if (!tables.includes('loan_history')) {
     database.exec(`
       CREATE TABLE loan_history (
@@ -72,6 +92,7 @@ export function getDb() {
     }
     
     db = new Database(activeDb.path);
+    db.pragma('foreign_keys = ON');
     currentDbPath = activeDb.path;
     runMigrations(db);
   }

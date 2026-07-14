@@ -415,6 +415,43 @@ describe('PATCH /albums/:id with tracks', () => {
     expect(res.json().tracks).toHaveLength(2);
   });
 
+  it('preserves track ids, file paths and playlist entries on update', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/albums',
+      payload: {
+        title: 'Preserve Me',
+        artist_name: 'Keeper',
+        tracks: [
+          { position: 1, title: 'One', duration: '1:00' },
+          { position: 2, title: 'Two', duration: '2:00' },
+          { position: 3, title: 'Three', duration: '3:00' },
+        ],
+      },
+    });
+    const id = created.json().id;
+    const before = created.json().tracks;
+    testDb.prepare('UPDATE tracks SET file_path = ? WHERE id = ?').run('Keeper/Preserve Me/01 - One.mp3', before[0].id);
+
+    // Rename a track, change a duration, drop the third track
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/albums/${id}`,
+      payload: {
+        tracks: [
+          { position: 1, title: 'One', duration: '1:11' },
+          { position: 2, title: 'Two (Renamed)', duration: '2:00' },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const after = res.json().tracks;
+    expect(after.map(t => t.id)).toEqual([before[0].id, before[1].id]);
+    expect(after[0].has_file).toBe(true);
+    expect(after[0].duration).toBe('1:11');
+    expect(after[1].title).toBe('Two (Renamed)');
+  });
+
   it('updates artist_name (covers updateAlbum artist branch)', async () => {
     const res = await app.inject({
       method: 'PATCH',

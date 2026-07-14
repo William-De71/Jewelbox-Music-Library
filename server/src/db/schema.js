@@ -50,6 +50,24 @@ export const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_albums_rating  ON albums(rating);
   CREATE INDEX IF NOT EXISTS idx_tracks_album   ON tracks(album_id);
 
+  CREATE TABLE IF NOT EXISTS playlists (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS playlist_tracks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    track_id    INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    position    INTEGER NOT NULL,
+    added_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist ON playlist_tracks(playlist_id, position);
+  CREATE INDEX IF NOT EXISTS idx_playlist_tracks_track    ON playlist_tracks(track_id);
+
   CREATE TABLE IF NOT EXISTS loan_history (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     album_id    INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
