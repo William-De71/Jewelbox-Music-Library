@@ -13,6 +13,7 @@ _Parce que vos albums méritent mieux qu'une simple étagère._
 <!-- markdownlint-enable MD033 MD041 -->
 
 - 🚀 [Démarrage rapide (développement)](#-démarrage-rapide-développement)
+- 🎵 [Lecteur audio intégré](#-lecteur-audio-intégré)
 - 🐳 [Deploy with Docker](#-docker)
 - 🧪 [Tests](#-tests)
 - 🌐 [API REST](#-api-rest)
@@ -41,6 +42,22 @@ npm run dev
 ```
 
 Ouvrir [http://localhost:5173](http://localhost:5173)
+
+---
+
+## 🎵 Lecteur audio intégré
+
+Écoutez les albums de votre collection directement dans JewelBox, façon Spotify local.
+
+1. **Paramètres → Bibliothèque musicale** : renseignez le chemin du dossier contenant vos fichiers audio (mp3, flac, ogg, opus, m4a, aac, wav), puis **Enregistrer**.
+2. Cliquez sur **Scanner la bibliothèque** : les fichiers sont associés automatiquement aux albums de la collection grâce à leurs tags (ID3/Vorbis/FLAC), avec repli sur la structure de dossiers `Artiste/Album/NN - Titre.ext`.
+3. Pour les albums non reconnus, ouvrez la fiche album et utilisez **Associer un dossier** pour choisir manuellement le dossier correspondant (cette association survit aux scans suivants).
+
+Un bouton lecture apparaît sur les albums disposant de fichiers audio (cartes, listes et fiche album). La barre de lecture persistante en bas de page offre lecture/pause, piste précédente/suivante, avance dans la piste et volume. Les contrôles s'affichent aussi sur l'écran verrouillé (Android) et dans les notifications multimédia (GNOME) via l'API MediaSession.
+
+💡 L'application est installable en PWA (menu « Installer l'application » du navigateur) sur Android comme sur le bureau (Fedora/GNOME, Chrome/Firefox).
+
+> **Docker** : montez votre musique en lecture seule (voir `docker/docker-compose.yml`, ex. `- /home/user/Musique:/music:ro`) et indiquez `/music` comme chemin de bibliothèque dans les Paramètres.
 
 ---
 
@@ -151,6 +168,12 @@ npm run test:coverage --workspace=server
 | `POST`   | `/api/database`              | Créer une nouvelle base                  |
 | `POST`   | `/api/database/:id/activate` | Activer une base                         |
 | `GET`    | `/api/database/active`       | Base de données active                   |
+| `POST`   | `/api/player/scan`           | Scanner la bibliothèque musicale         |
+| `GET`    | `/api/player/scan/status`    | Progression / résultat du scan           |
+| `GET`    | `/api/player/tracks/:id/stream` | Flux audio d'une piste (Range)        |
+| `GET`    | `/api/player/browse?dir=`    | Parcourir les dossiers de la bibliothèque |
+| `PUT`    | `/api/player/albums/:id/folder` | Associer un dossier à un album        |
+| `DELETE` | `/api/player/albums/:id/folder` | Dissocier le dossier d'un album       |
 
 ### Paramètres de `GET /api/albums`
 
