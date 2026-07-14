@@ -79,6 +79,14 @@ export const api = {
     return json;
   },
 
+  // Audio player
+  playerScan: () => request('POST', '/player/scan'),
+  playerScanStatus: () => request('GET', '/player/scan/status'),
+  playerBrowse: (dir = '') => request('GET', `/player/browse?dir=${encodeURIComponent(dir)}`),
+  setAlbumAudioFolder: (id, folder) => request('PUT', `/player/albums/${id}/folder`, { folder }),
+  clearAlbumAudioFolder: (id) => request('DELETE', `/player/albums/${id}/folder`),
+  trackStreamUrl: (id) => `${BASE}/player/tracks/${id}/stream`,
+
   // Version
   getVersion: () => request('GET', '/version'),
 };
