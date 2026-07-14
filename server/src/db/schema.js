@@ -30,6 +30,7 @@ export const SCHEMA = `
     lent_to        TEXT,
     lent_at        TEXT,
     is_wanted      INTEGER NOT NULL DEFAULT 0 CHECK(is_wanted IN (0,1)),
+    audio_folder   TEXT,
     created_at     TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -39,7 +40,8 @@ export const SCHEMA = `
     album_id   INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
     position   INTEGER NOT NULL,
     title      TEXT NOT NULL,
-    duration   TEXT
+    duration   TEXT,
+    file_path  TEXT
   );
 
   CREATE INDEX IF NOT EXISTS idx_albums_artist  ON albums(artist_id);

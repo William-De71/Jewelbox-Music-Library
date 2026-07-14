@@ -26,6 +26,15 @@ function runMigrations(database) {
     database.exec("ALTER TABLE albums ADD COLUMN lent_at TEXT");
     console.log('[Migration] Added lent_at column to albums');
   }
+  if (!cols.includes('audio_folder')) {
+    database.exec("ALTER TABLE albums ADD COLUMN audio_folder TEXT");
+    console.log('[Migration] Added audio_folder column to albums');
+  }
+  const trackCols = database.prepare("PRAGMA table_info(tracks)").all().map(c => c.name);
+  if (!trackCols.includes('file_path')) {
+    database.exec("ALTER TABLE tracks ADD COLUMN file_path TEXT");
+    console.log('[Migration] Added file_path column to tracks');
+  }
   const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(t => t.name);
   if (!tables.includes('loan_history')) {
     database.exec(`
