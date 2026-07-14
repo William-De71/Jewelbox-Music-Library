@@ -36,8 +36,9 @@ function routeFromLocation() {
   if (path === '/settings') return { page: 'settings', params };
   if (path === '/about') return { page: 'about', params };
   if (path.startsWith('/playlists')) {
-    const id = path.split('/')[2];
-    return { page: 'playlists', params: id ? { id } : {} };
+    const parts = path.split('/'); // ['', 'playlists', 'smart', key] or ['', 'playlists', id]
+    if (parts[2] === 'smart' && parts[3]) return { page: 'playlists', params: { smart: parts[3] } };
+    return { page: 'playlists', params: parts[2] ? { id: parts[2] } : {} };
   }
   return { page: 'dashboard', params };
 }
@@ -73,7 +74,7 @@ export function App() {
     } else if (page === 'about') {
       url = '/about';
     } else if (page === 'playlists') {
-      url = params.id ? `/playlists/${params.id}` : '/playlists';
+      url = params.smart ? `/playlists/smart/${params.smart}` : params.id ? `/playlists/${params.id}` : '/playlists';
     }
     window.history.pushState({}, '', url);
   };

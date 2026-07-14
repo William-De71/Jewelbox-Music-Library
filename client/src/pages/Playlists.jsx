@@ -4,8 +4,20 @@ import { useI18n } from '../config/i18n/index.jsx';
 import { usePlayer } from '../components/PlayerContext.jsx';
 import {
   ListMusic, Plus, Play, Pause, Pencil, Trash2, X, Check, ArrowLeft,
-  ChevronUp, ChevronDown, AlertCircle, Clock,
+  ChevronUp, ChevronDown, AlertCircle, Clock, Heart,
+  Sparkles, Dices, History, Music, ChartColumn, Library, Infinity as InfinityIcon,
 } from 'lucide-preact';
+
+const SMART_KEYS = [
+  'newest', 'random50', 'ever_played', 'never_played', 'last_played',
+  'most_played', 'favourites', 'all_tracks', 'dynamic_mix',
+];
+
+const SMART_ICONS = {
+  newest: Sparkles, random50: Dices, ever_played: History, never_played: Music,
+  last_played: Clock, most_played: ChartColumn, favourites: Heart,
+  all_tracks: Library, dynamic_mix: InfinityIcon,
+};
 
 function formatSeconds(total) {
   if (!total) return '—';
@@ -22,15 +34,18 @@ function fmtDate(dateStr) {
 
 export function Playlists({ navigate, params }) {
   const { t } = useI18n();
-  const { playTracks, current, playing, toggle } = usePlayer();
+  const { playTracks, playDynamicMix, current, playing, toggle, toggleFavorite } = usePlayer();
   const [playlists, setPlaylists] = useState(null);
+  const [smartPlaylists, setSmartPlaylists] = useState(null);
   const [playlist, setPlaylist] = useState(null);
+  const [smart, setSmart] = useState(null); // { key, tracks } for the smart detail view
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
   const [nameModal, setNameModal] = useState(null); // { mode: 'create' | 'rename', value }
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const playlistId = params?.id ? Number(params.id) : null;
+  const smartKey = params?.smart || null;
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
@@ -41,6 +56,9 @@ export function Playlists({ navigate, params }) {
     api.getPlaylists()
       .then((res) => setPlaylists(res.data))
       .catch((e) => setError(e.message));
+    api.getSmartPlaylists()
+      .then((res) => setSmartPlaylists(res.data))
+      .catch(() => {});
   };
 
   const loadDetail = (id) => {
@@ -49,11 +67,18 @@ export function Playlists({ navigate, params }) {
       .catch((e) => setError(e.message));
   };
 
+  const loadSmart = (key) => {
+    api.getSmartPlaylist(key)
+      .then(setSmart)
+      .catch((e) => setError(e.message));
+  };
+
   useEffect(() => {
     setError(null);
-    if (playlistId) loadDetail(playlistId);
+    if (smartKey) loadSmart(smartKey);
+    else if (playlistId) loadDetail(playlistId);
     else loadList();
-  }, [playlistId]);
+  }, [playlistId, smartKey]);
 
   const handleSaveName = async (e) => {
     e.preventDefault();
@@ -126,6 +151,28 @@ export function Playlists({ navigate, params }) {
     }
   };
 
+  // Smart playlist detail (read-only)
+  const smartPlayable = smart?.tracks?.filter((tr) => tr.has_file) || [];
+
+  const handlePlaySmart = () => {
+    if (smartKey === 'dynamic_mix') playDynamicMix();
+    else playTracks(smartPlayable);
+  };
+
+  const handlePlaySmartTrack = (track, i) => {
+    if (current?.id === track.id) {
+      toggle();
+      return;
+    }
+    playTracks(smartPlayable, smartPlayable.findIndex((tr) => tr.id === track.id));
+  };
+
+  const handleToggleSmartFavorite = (track) => {
+    const next = !track.is_favorite;
+    setSmart((s) => ({ ...s, tracks: s.tracks.map((tr) => (tr.id === track.id ? { ...tr, is_favorite: next } : tr)) }));
+    toggleFavorite(track.id, next);
+  };
+
   if (error) {
     return (
       <div class="container-xl">
@@ -145,7 +192,100 @@ export function Playlists({ navigate, params }) {
         </div>
       )}
 
-      {playlistId ? (
+      {smartKey ? (
+        /* ── Smart playlist detail (read-only) ───────────────────────── */
+        !smart ? (
+          <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+        ) : (
+          <>
+            <div class="page-header d-print-none mb-3">
+              <div class="row align-items-center">
+                <div class="col-auto">
+                  <button class="btn btn-outline-secondary" onClick={() => navigate('playlists')}>
+                    <ArrowLeft size={16} class="me-1" />{t('playlists.backToList')}
+                  </button>
+                </div>
+                <div class="col">
+                  <h2 class="page-title">
+                    {(() => { const Icon = SMART_ICONS[smartKey] || ListMusic; return <Icon size={22} class="me-2" />; })()}
+                    {t('playlists.smart.' + smartKey)}
+                  </h2>
+                  <div class="text-muted">{t('playlists.trackCount', { n: String(smart.tracks.length) })}</div>
+                </div>
+                {smartPlayable.length > 0 && (
+                  <div class="col-auto">
+                    <button class="btn btn-primary" onClick={handlePlaySmart}>
+                      <Play size={16} class="me-1" />{t('playlists.listen')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {smart.tracks.length === 0 ? (
+              <div class="card">
+                <div class="card-body text-center text-muted py-5">
+                  <ListMusic size={48} class="mb-2" />
+                  <div>{t('playlists.noPlayableTracks')}</div>
+                </div>
+              </div>
+            ) : (
+              <div class="card">
+                <div class="table-responsive">
+                  <table class="table table-sm card-table align-middle">
+                    <thead>
+                      <tr>
+                        <th class="track-number-col">#</th>
+                        <th>{t('albumDetail.trackTitle')}</th>
+                        <th class="d-none d-md-table-cell">{t('playlists.artist')}</th>
+                        <th class="d-none d-lg-table-cell">{t('playlists.album')}</th>
+                        <th class="text-end">{t('albumDetail.duration')}</th>
+                        <th class="text-end"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {smart.tracks.map((track, i) => (
+                        <tr key={`${track.id}-${i}`} class={current?.id === track.id ? 'track-playing' : ''}>
+                          <td class="text-muted">
+                            {track.has_file ? (
+                              <button
+                                class="btn btn-sm btn-icon btn-ghost-secondary"
+                                onClick={() => handlePlaySmartTrack(track, i)}
+                                title={current?.id === track.id && playing ? t('player.pause') : t('player.playTrack')}
+                              >
+                                {current?.id === track.id && playing ? <Pause size={14} /> : <Play size={14} />}
+                              </button>
+                            ) : (
+                              i + 1
+                            )}
+                          </td>
+                          <td>{track.title}</td>
+                          <td class="text-muted d-none d-md-table-cell">{track.artist_name}</td>
+                          <td class="d-none d-lg-table-cell">
+                            <button class="btn btn-link p-0 text-muted" onClick={() => navigate('detail', { id: track.album_id })}>
+                              {track.album_title}
+                            </button>
+                          </td>
+                          <td class="text-end text-muted font-monospace small">{track.duration || '—'}</td>
+                          <td class="text-end">
+                            <button
+                              class={`btn btn-sm btn-icon ${track.is_favorite ? 'text-danger' : 'btn-ghost-secondary'}`}
+                              onClick={() => handleToggleSmartFavorite(track)}
+                              title={track.is_favorite ? t('player.unfavorite') : t('player.favorite')}
+                            >
+                              <Heart size={14} fill={track.is_favorite ? 'currentColor' : 'none'} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
+        )
+      ) : playlistId ? (
         /* ── Detail view ─────────────────────────────────────────────── */
         !playlist ? (
           <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
@@ -280,6 +420,36 @@ export function Playlists({ navigate, params }) {
               </div>
             </div>
           </div>
+
+          {/* Smart playlists */}
+          {smartPlaylists && smartPlaylists.length > 0 && (
+            <div class="card mb-3">
+              <div class="card-header">
+                <h3 class="card-title fs-5 mb-0"><Sparkles size={18} class="me-2" />{t('playlists.smartTitle')}</h3>
+              </div>
+              <div class="list-group list-group-flush">
+                {SMART_KEYS.map((key) => {
+                  const meta = smartPlaylists.find((p) => p.key === key);
+                  if (!meta) return null;
+                  const Icon = SMART_ICONS[key] || ListMusic;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      class="list-group-item list-group-item-action d-flex align-items-center gap-2"
+                      onClick={() => navigate('playlists', { smart: key })}
+                    >
+                      <Icon size={16} class="text-muted flex-shrink-0" />
+                      <span>{t('playlists.smart.' + key)}</span>
+                      <span class="badge bg-secondary-lt ms-auto flex-shrink-0">
+                        {t('playlists.trackCount', { n: String(meta.track_count) })}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {!playlists ? (
             <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
