@@ -26,6 +26,7 @@ export function PlayerProvider({ children }) {
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const [volume, setVolumeState] = useState(() => {
     const saved = parseFloat(localStorage.getItem('jewelbox-volume'));
     return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : 1;
@@ -35,6 +36,9 @@ export function PlayerProvider({ children }) {
   const indexRef = useRef(index);
   queueRef.current = queue;
   indexRef.current = index;
+
+  // Last.fm scrobbling state for the current playback (reset on every track change)
+  const scrobbleRef = useRef({ trackId: null, startedAt: 0, played: 0, lastTime: 0, scrobbled: false });
 
   if (!audioRef.current && typeof Audio !== 'undefined') {
     audioRef.current = new Audio();
@@ -50,15 +54,28 @@ export function PlayerProvider({ children }) {
     setIndex(newIndex);
     setCurrentTime(0);
     setDuration(0);
+    scrobbleRef.current = {
+      trackId: track.id,
+      startedAt: Math.floor(Date.now() / 1000),
+      played: 0,
+      lastTime: 0,
+      scrobbled: false,
+    };
+    api.lastfmNowPlaying(track.id).catch(() => {});
     audio.src = api.trackStreamUrl(track.id);
     audio.play().catch(() => setPlaying(false));
   }, []);
 
-  const playAlbum = useCallback((album, startIndex = 0) => {
-    const newQueue = buildQueue(album);
+  // tracks must be queue-shaped items ({id, title, album_id, artist_name, cover_url, ...})
+  const playTracks = useCallback((tracks, startIndex = 0) => {
+    const newQueue = (tracks || []).filter(t => t.has_file !== false);
     if (newQueue.length === 0) return;
     playAt(newQueue, Math.min(startIndex, newQueue.length - 1));
   }, [playAt]);
+
+  const playAlbum = useCallback((album, startIndex = 0) => {
+    playTracks(buildQueue(album), startIndex);
+  }, [playTracks]);
 
   const playAlbumById = useCallback(async (albumId, startIndex = 0) => {
     const album = await api.getAlbum(albumId);
@@ -91,6 +108,11 @@ export function PlayerProvider({ children }) {
     }
   }, [playAt]);
 
+  const jumpTo = useCallback((i) => {
+    const q = queueRef.current;
+    if (i >= 0 && i < q.length) playAt(q, i);
+  }, [playAt]);
+
   const seek = useCallback((seconds) => {
     const audio = audioRef.current;
     if (audio && Number.isFinite(seconds)) audio.currentTime = seconds;
@@ -114,6 +136,7 @@ export function PlayerProvider({ children }) {
     setPlaying(false);
     setCurrentTime(0);
     setDuration(0);
+    setExpanded(false);
   }, []);
 
   useEffect(() => {
@@ -126,7 +149,21 @@ export function PlayerProvider({ children }) {
     if (!audio) return;
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
-    const onTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const onTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+      // Last.fm rule: track >= 30s, played half of it or 4 minutes
+      const s = scrobbleRef.current;
+      if (s.trackId != null) {
+        const dt = audio.currentTime - s.lastTime;
+        if (dt > 0 && dt < 2) s.played += dt; // ignore seeks
+        s.lastTime = audio.currentTime;
+        const dur = audio.duration;
+        if (!s.scrobbled && Number.isFinite(dur) && dur >= 30 && (s.played >= dur / 2 || s.played >= 240)) {
+          s.scrobbled = true;
+          api.lastfmScrobble(s.trackId, s.startedAt).catch(() => {});
+        }
+      }
+    };
     const onLoadedMetadata = () => setDuration(audio.duration || 0);
     const onEnded = () => {
       const q = queueRef.current;
@@ -191,8 +228,9 @@ export function PlayerProvider({ children }) {
   }, [current]);
 
   const value = {
-    queue, index, current, playing, currentTime, duration, volume,
-    playAlbum, playAlbumById, toggle, next, prev, seek, setVolume, close,
+    queue, index, current, playing, currentTime, duration, volume, expanded,
+    playTracks, playAlbum, playAlbumById, toggle, next, prev, seek, setVolume, close,
+    setExpanded, jumpTo,
   };
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;

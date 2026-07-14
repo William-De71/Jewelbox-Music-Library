@@ -3,7 +3,8 @@ import { api } from '../api/client.js';
 import { StarRating } from '../components/StarRating.jsx';
 import { usePlayer } from '../components/PlayerContext.jsx';
 import { FolderPickerModal } from '../components/FolderPickerModal.jsx';
-import { ArrowLeft, UserCheck, UserPlus, User, Pencil, Trash2, Disc, StickyNote, ListOrdered, Clock, Music2, AlertCircle, Info, Heart, History, Play, Pause, FolderSearch, FolderX } from 'lucide-preact';
+import { AddToPlaylistModal } from '../components/AddToPlaylistModal.jsx';
+import { ArrowLeft, UserCheck, UserPlus, User, Pencil, Trash2, Disc, StickyNote, ListOrdered, Clock, Music2, AlertCircle, Info, Heart, History, Play, Pause, FolderSearch, FolderX, ListPlus } from 'lucide-preact';
 import { useI18n } from '../config/i18n/index.jsx';
 import '../styles/AlbumDetail.css';
 
@@ -26,6 +27,7 @@ export function AlbumDetail({ navigate, albumId }) {
   const [showBorrowerSuggestions, setShowBorrowerSuggestions] = useState(false);
   const [loanHistory, setLoanHistory] = useState([]);
   const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  const [addToPlaylist, setAddToPlaylist] = useState(null); // { trackId } | { albumId }
   const [toast, setToast] = useState(null);
 
   const showToast = (message, type = 'success') => {
@@ -281,6 +283,13 @@ export function AlbumDetail({ navigate, albumId }) {
                       <FolderSearch size={14} class="me-1" />{t('musicLibrary.associateFolder')}
                     </button>
                   )}
+                  <button
+                    class="btn btn-sm btn-outline-secondary"
+                    onClick={() => setAddToPlaylist({ albumId: album.id })}
+                    title={t('playlists.addAlbumToPlaylist')}
+                  >
+                    <ListPlus size={14} class="me-1" />{t('playlists.addToPlaylist')}
+                  </button>
                   {playableTracks.length > 0 && (
                     <button class="btn btn-sm btn-primary" onClick={() => playAlbum(album)}>
                       <Play size={14} class="me-1" />{t('player.playAlbum')}
@@ -314,7 +323,16 @@ export function AlbumDetail({ navigate, albumId }) {
                           )}
                         </td>
                         <td>{track.title}</td>
-                        <td class="text-end text-muted font-monospace small">{track.duration || '—'}</td>
+                        <td class="text-end text-muted font-monospace small">
+                          <span class="me-2">{track.duration || '—'}</span>
+                          <button
+                            class="btn btn-sm btn-icon btn-ghost-secondary"
+                            onClick={() => setAddToPlaylist({ trackId: track.id })}
+                            title={t('playlists.addToPlaylist')}
+                          >
+                            <ListPlus size={14} />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -397,6 +415,19 @@ export function AlbumDetail({ navigate, albumId }) {
         <div class={`alert alert-${toast.type} position-fixed top-0 end-0 m-3`} style={{ zIndex: 10000 }}>
           {toast.message}
         </div>
+      )}
+
+      {/* Add to playlist modal */}
+      {addToPlaylist && (
+        <AddToPlaylistModal
+          trackId={addToPlaylist.trackId}
+          albumId={addToPlaylist.albumId}
+          onClose={() => setAddToPlaylist(null)}
+          onAdded={(result) => {
+            setAddToPlaylist(null);
+            showToast(t('playlists.added', { n: String(result.added) }));
+          }}
+        />
       )}
 
       {/* Audio folder picker modal */}

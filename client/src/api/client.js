@@ -79,6 +79,16 @@ export const api = {
     return json;
   },
 
+  // Playlists
+  getPlaylists: () => request('GET', '/playlists'),
+  getPlaylist: (id) => request('GET', `/playlists/${id}`),
+  createPlaylist: (name) => request('POST', '/playlists', { name }),
+  renamePlaylist: (id, name) => request('PATCH', `/playlists/${id}`, { name }),
+  deletePlaylist: (id) => request('DELETE', `/playlists/${id}`),
+  addToPlaylist: (id, payload) => request('POST', `/playlists/${id}/tracks`, payload),
+  removePlaylistEntry: (id, entryId) => request('DELETE', `/playlists/${id}/tracks/${entryId}`),
+  reorderPlaylist: (id, entryIds) => request('PUT', `/playlists/${id}/tracks`, { entry_ids: entryIds }),
+
   // Audio player
   playerScan: () => request('POST', '/player/scan'),
   playerScanStatus: () => request('GET', '/player/scan/status'),
@@ -86,6 +96,12 @@ export const api = {
   setAlbumAudioFolder: (id, folder) => request('PUT', `/player/albums/${id}/folder`, { folder }),
   clearAlbumAudioFolder: (id) => request('DELETE', `/player/albums/${id}/folder`),
   trackStreamUrl: (id) => `${BASE}/player/tracks/${id}/stream`,
+
+  // Last.fm
+  lastfmConnectUrl: () => request('GET', `/lastfm/connect?origin=${encodeURIComponent(window.location.origin)}`),
+  lastfmDisconnect: () => request('DELETE', '/lastfm/session'),
+  lastfmNowPlaying: (track_id) => request('POST', '/lastfm/nowplaying', { track_id }),
+  lastfmScrobble: (track_id, started_at) => request('POST', '/lastfm/scrobble', { track_id, started_at }),
 
   // Version
   getVersion: () => request('GET', '/version'),

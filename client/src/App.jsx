@@ -9,9 +9,41 @@ import { Lend } from './pages/Lend.jsx';
 import { Stats } from './pages/Stats.jsx';
 import { Settings } from './pages/Settings.jsx';
 import { About } from './pages/About.jsx';
+import { Playlists } from './pages/Playlists.jsx';
+
+// Derive the route from the current URL (initial load, back/forward, deep links)
+function routeFromLocation() {
+  const path = window.location.pathname;
+  const urlParams = new URLSearchParams(window.location.search);
+  const params = {};
+
+  if (path === '/add') {
+    urlParams.forEach((value, key) => params[key] = value);
+    return { page: 'add', params };
+  }
+  if (path.startsWith('/edit/')) return { page: 'edit', params: { id: path.split('/')[2] } };
+  if (path.startsWith('/album/')) return { page: 'detail', params: { id: path.split('/')[2] } };
+  if (path === '/collections') {
+    urlParams.forEach((value, key) => params[key] = value);
+    return { page: 'collections', params };
+  }
+  if (path === '/wantlist') {
+    urlParams.forEach((value, key) => params[key] = value);
+    return { page: 'wantlist', params };
+  }
+  if (path === '/lend') return { page: 'lend', params };
+  if (path === '/stats') return { page: 'stats', params };
+  if (path === '/settings') return { page: 'settings', params };
+  if (path === '/about') return { page: 'about', params };
+  if (path.startsWith('/playlists')) {
+    const id = path.split('/')[2];
+    return { page: 'playlists', params: id ? { id } : {} };
+  }
+  return { page: 'dashboard', params };
+}
 
 export function App() {
-  const [route, setRoute] = useState({ page: 'dashboard', params: {} });
+  const [route, setRoute] = useState(() => routeFromLocation());
 
   const navigate = (page, params = {}) => {
     setRoute({ page, params });
@@ -40,55 +72,17 @@ export function App() {
       url = '/settings';
     } else if (page === 'about') {
       url = '/about';
+    } else if (page === 'playlists') {
+      url = params.id ? `/playlists/${params.id}` : '/playlists';
     }
     window.history.pushState({}, '', url);
   };
 
   // Handle browser back/forward buttons
   useEffect(() => {
-    const handlePopState = () => {
-      const path = window.location.pathname;
-      const urlParams = new URLSearchParams(window.location.search);
-      const params = {};
-
-      if (path === '/') {
-        setRoute({ page: 'dashboard', params });
-      } else if (path === '/add') {
-        urlParams.forEach((value, key) => params[key] = value);
-        setRoute({ page: 'add', params });
-      } else if (path.startsWith('/edit/')) {
-        const id = path.split('/')[2];
-        setRoute({ page: 'edit', params: { id } });
-      } else if (path.startsWith('/album/')) {
-        const id = path.split('/')[2];
-        setRoute({ page: 'detail', params: { id } });
-      } else if (path === '/collections') {
-        urlParams.forEach((value, key) => params[key] = value);
-        setRoute({ page: 'collections', params });
-      } else if (path === '/wantlist') {
-        urlParams.forEach((value, key) => params[key] = value);
-        setRoute({ page: 'wantlist', params });
-      } else if (path === '/lend') {
-        setRoute({ page: 'lend', params });
-      } else if (path === '/stats') {
-        setRoute({ page: 'stats', params });
-      } else if (path === '/settings') {
-        setRoute({ page: 'settings', params });
-      } else if (path === '/about') {
-        setRoute({ page: 'about', params });
-      }
-    };
-
+    const handlePopState = () => setRoute(routeFromLocation());
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  // Set initial URL
-  useEffect(() => {
-    const path = window.location.pathname;
-    if (path !== '/') {
-      window.history.replaceState({}, '', '/');
-    }
   }, []);
 
   return (
@@ -103,6 +97,7 @@ export function App() {
       {route.page === 'stats' && <Stats />}
       {route.page === 'settings' && <Settings navigate={navigate} />}
       {route.page === 'about' && <About />}
+      {route.page === 'playlists' && <Playlists navigate={navigate} params={route.params} />}
     </Layout>
   );
 }

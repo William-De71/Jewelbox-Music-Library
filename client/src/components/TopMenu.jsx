@@ -1,5 +1,5 @@
 import { useState } from 'preact/hooks';
-import { Home, Disc, Heart, ArrowRightLeft, BarChart3, Settings, Info, Menu, X } from 'lucide-preact';
+import { Home, Disc, Heart, ArrowRightLeft, BarChart3, Settings, Info, Menu, X, ListMusic } from 'lucide-preact';
 import { useI18n } from '../config/i18n/index.jsx';
 import '../styles/topmenu.css';
 
@@ -67,7 +67,17 @@ export function TopMenu({ currentPage, navigate }) {
             </a>
           </li>
           <li class="nav-item">
-            <a 
+            <a
+              class={`nav-link ${currentPage === 'playlists' ? 'active' : ''}`}
+              href="#"
+              onClick={(e) => { e.preventDefault(); handleNavigate('playlists'); }}
+            >
+              <ListMusic size={20} class="me-2" />
+              {t('menu.playlists')}
+            </a>
+          </li>
+          <li class="nav-item">
+            <a
               class={`nav-link ${currentPage === 'stats' ? 'active' : ''}`}
               href="#"
               onClick={(e) => { e.preventDefault(); handleNavigate('stats'); }}
