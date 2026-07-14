@@ -12,6 +12,7 @@ import { versionRoutes } from './routes/version.js';
 import { playerRoutes } from './routes/player.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { lastfmRoutes } from './routes/lastfm.js';
+import { smartPlaylistRoutes } from './routes/smartPlaylists.js';
 import { createDatabase, setActiveDatabase, deleteDatabase } from './db/manager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -79,6 +80,9 @@ await fastify.register(playlistRoutes, { prefix: '/api' });
 
 // Register Last.fm scrobbling routes
 await fastify.register(lastfmRoutes, { prefix: '/api' });
+
+// Register smart playlist routes
+await fastify.register(smartPlaylistRoutes, { prefix: '/api' });
 
 // Register version routes
 await fastify.register(versionRoutes);
