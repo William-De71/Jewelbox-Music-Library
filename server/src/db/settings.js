@@ -19,6 +19,27 @@ export function getSetting(key) {
   }
 }
 
+export function setSetting(key, value) {
+  const db = new Database(MANAGER_DB_PATH);
+  try {
+    db.prepare(`
+      INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `).run(key, value);
+  } finally {
+    db.close();
+  }
+}
+
+export function deleteSetting(key) {
+  const db = new Database(MANAGER_DB_PATH);
+  try {
+    db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+  } finally {
+    db.close();
+  }
+}
+
 // Returns the configured music library root, or null when unset or not a directory.
 export function getMusicLibraryPath() {
   const value = getSetting('music_library_path');
