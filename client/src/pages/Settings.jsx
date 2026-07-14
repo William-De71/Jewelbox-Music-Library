@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { databasesApi } from '../api/databases.js';
 import { useI18n } from '../config/i18n/index.jsx';
 import { api } from '../api/client.js';
-import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music } from 'lucide-preact';
+import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music, Radio } from 'lucide-preact';
 
 export function Settings({ navigate }) {
   const { t } = useI18n();
@@ -20,6 +20,9 @@ export function Settings({ navigate }) {
   const [importing, setImporting] = useState(false);
   const [musicPath, setMusicPath] = useState('');
   const [musicPathSaving, setMusicPathSaving] = useState(false);
+  const [lastfmForm, setLastfmForm] = useState({ lastfm_api_key: '', lastfm_api_secret: '' });
+  const [lastfmStatus, setLastfmStatus] = useState({ connected: false, username: '', secretSet: false });
+  const [lastfmSaving, setLastfmSaving] = useState(false);
   const [scanStatus, setScanStatus] = useState(null);
   const [scanning, setScanning] = useState(false);
   const scanTimer = useRef(null);
@@ -48,7 +51,17 @@ export function Settings({ navigate }) {
     api.getSettings().then(s => {
       setDiscogsForm({ discogs_key: s.discogs_key || '', discogs_secret: s.discogs_secret || '' });
       setMusicPath(s.music_library_path || '');
+      setLastfmForm({ lastfm_api_key: s.lastfm_api_key || '', lastfm_api_secret: '' });
+      setLastfmStatus({
+        connected: Boolean(s.lastfm_connected),
+        username: s.lastfm_username || '',
+        secretSet: Boolean(s.lastfm_api_secret_set),
+      });
     }).catch(() => {});
+    if (new URLSearchParams(window.location.search).get('lastfm') === 'error') {
+      showToast(t('lastfm.connectError'), 'danger');
+      window.history.replaceState({}, '', '/settings');
+    }
     // Resume status polling if a scan is already running server-side
     api.playerScanStatus().then(status => {
       setScanStatus(status);
@@ -132,6 +145,43 @@ export function Settings({ navigate }) {
       showToast(err.message, 'danger');
     } finally {
       setDiscogsSaving(false);
+    }
+  };
+
+  const handleSaveLastfm = async (e) => {
+    e.preventDefault();
+    setLastfmSaving(true);
+    try {
+      const payload = { lastfm_api_key: lastfmForm.lastfm_api_key.trim() };
+      // The secret is write-only: only send it when the user typed a new one
+      if (lastfmForm.lastfm_api_secret.trim()) payload.lastfm_api_secret = lastfmForm.lastfm_api_secret.trim();
+      await api.saveSettings(payload);
+      if (payload.lastfm_api_secret) setLastfmStatus(s => ({ ...s, secretSet: true }));
+      setLastfmForm(f => ({ ...f, lastfm_api_secret: '' }));
+      showToast(t('lastfm.saved'), 'success');
+    } catch (err) {
+      showToast(err.message, 'danger');
+    } finally {
+      setLastfmSaving(false);
+    }
+  };
+
+  const handleLastfmConnect = async () => {
+    try {
+      const { url } = await api.lastfmConnectUrl();
+      window.location.href = url;
+    } catch (err) {
+      showToast(err.message, 'danger');
+    }
+  };
+
+  const handleLastfmDisconnect = async () => {
+    try {
+      await api.lastfmDisconnect();
+      setLastfmStatus(s => ({ ...s, connected: false, username: '' }));
+      showToast(t('lastfm.disconnected'), 'success');
+    } catch (err) {
+      showToast(err.message, 'danger');
     }
   };
 
@@ -485,6 +535,86 @@ export function Settings({ navigate }) {
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Last.fm section */}
+        <div class="row mt-4">
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title fs-5 mb-0">
+                  <Radio size={18} class="me-2" />
+                  {t('lastfm.title')}
+                </h3>
+              </div>
+              <div class="card-body">
+                <p class="text-muted small mb-1">{t('lastfm.description')}</p>
+                <p class="text-muted small mb-3">
+                  <ExternalLink size={13} class="me-1" />
+                  <a href="https://www.last.fm/api/account/create" target="_blank" rel="noreferrer">
+                    {t('lastfm.howTo')}
+                  </a>
+                </p>
+
+                <form onSubmit={handleSaveLastfm}>
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label class="form-label">{t('lastfm.apiKey')}</label>
+                      <input
+                        type="text"
+                        class="form-control font-monospace"
+                        value={lastfmForm.lastfm_api_key}
+                        onInput={(e) => setLastfmForm({ ...lastfmForm, lastfm_api_key: e.target.value })}
+                        autocomplete="off"
+                      />
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label">{t('lastfm.apiSecret')}</label>
+                      <input
+                        type="password"
+                        class="form-control font-monospace"
+                        placeholder={lastfmStatus.secretSet ? t('lastfm.secretConfigured') : ''}
+                        value={lastfmForm.lastfm_api_secret}
+                        onInput={(e) => setLastfmForm({ ...lastfmForm, lastfm_api_secret: e.target.value })}
+                        autocomplete="off"
+                      />
+                    </div>
+                  </div>
+                  <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
+                    <button type="submit" class="btn btn-primary" disabled={lastfmSaving}>
+                      {lastfmSaving
+                        ? <span class="spinner-border spinner-border-sm me-2" />
+                        : <Check size={16} class="me-1" />}
+                      {t('lastfm.save')}
+                    </button>
+                    {lastfmStatus.connected ? (
+                      <>
+                        <span class="d-inline-flex align-items-center gap-1 text-success small fw-semibold ms-2">
+                          <ShieldCheck size={16} />
+                          {t('lastfm.connectedAs', { name: lastfmStatus.username })}
+                        </span>
+                        <button type="button" class="btn btn-outline-danger" onClick={handleLastfmDisconnect}>
+                          <X size={16} class="me-1" />{t('lastfm.disconnect')}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          class="btn btn-outline-primary"
+                          onClick={handleLastfmConnect}
+                          disabled={!lastfmForm.lastfm_api_key.trim() || !lastfmStatus.secretSet && !lastfmForm.lastfm_api_secret.trim()}
+                        >
+                          <Radio size={16} class="me-1" />{t('lastfm.connect')}
+                        </button>
+                        <span class="text-muted small">{t('lastfm.connectHint')}</span>
+                      </>
+                    )}
+                  </div>
+                </form>
               </div>
             </div>
           </div>
