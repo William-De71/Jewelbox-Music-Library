@@ -7,6 +7,8 @@ import {
   getTrackForStream,
   setAlbumAudioFolder,
   setTrackFilePaths,
+  markTrackPlayed,
+  setTrackFavorite,
 } from '../db/queries.js';
 
 // Resolves a library-relative path and guarantees it stays inside the library root.
@@ -48,6 +50,30 @@ export async function playerRoutes(fastify) {
       if (!fs.existsSync(abs)) return reply.code(404).send({ error: 'File not found' });
 
       return reply.sendFile(path.relative(libRoot, abs), libRoot);
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  fastify.post('/player/tracks/:id/played', async (req, reply) => {
+    try {
+      if (!markTrackPlayed(Number(req.params.id))) {
+        return reply.code(404).send({ error: 'Track not found' });
+      }
+      return reply.code(204).send();
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  fastify.patch('/player/tracks/:id/favorite', async (req, reply) => {
+    try {
+      if (typeof req.body?.is_favorite !== 'boolean') {
+        return reply.code(400).send({ error: 'is_favorite must be a boolean' });
+      }
+      const result = setTrackFavorite(Number(req.params.id), req.body.is_favorite);
+      if (!result) return reply.code(404).send({ error: 'Track not found' });
+      return result;
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }

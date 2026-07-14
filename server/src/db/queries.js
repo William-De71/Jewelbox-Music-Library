@@ -121,9 +121,17 @@ export function getAlbumById(id) {
   const album = mapAlbum(db.prepare(`${ALBUM_SELECT} WHERE a.id = ?`).get(id));
   if (!album) return null;
   album.tracks = db
-    .prepare('SELECT id, position, title, duration, file_path FROM tracks WHERE album_id = ? ORDER BY position')
+    .prepare('SELECT id, position, title, duration, file_path, play_count, is_favorite FROM tracks WHERE album_id = ? ORDER BY position')
     .all(id)
-    .map(t => ({ id: t.id, position: t.position, title: t.title, duration: t.duration, has_file: t.file_path != null }));
+    .map(t => ({
+      id: t.id,
+      position: t.position,
+      title: t.title,
+      duration: t.duration,
+      has_file: t.file_path != null,
+      play_count: t.play_count,
+      is_favorite: Boolean(t.is_favorite),
+    }));
   return album;
 }
 
@@ -365,6 +373,21 @@ export function getTrackForStream(trackId) {
   return getDb().prepare('SELECT id, file_path FROM tracks WHERE id = ?').get(trackId) || null;
 }
 
+export function markTrackPlayed(trackId) {
+  const { changes } = getDb()
+    .prepare("UPDATE tracks SET play_count = play_count + 1, last_played_at = datetime('now') WHERE id = ?")
+    .run(trackId);
+  return changes > 0;
+}
+
+export function setTrackFavorite(trackId, isFavorite) {
+  const { changes } = getDb()
+    .prepare('UPDATE tracks SET is_favorite = ? WHERE id = ?')
+    .run(isFavorite ? 1 : 0, trackId);
+  if (!changes) return null;
+  return { id: trackId, is_favorite: Boolean(isFavorite) };
+}
+
 export function getTrackWithAlbum(trackId) {
   return getDb().prepare(`
     SELECT t.id, t.title, t.duration, a.title AS album_title, ar.name AS artist_name
@@ -373,6 +396,32 @@ export function getTrackWithAlbum(trackId) {
     JOIN artists ar ON ar.id = a.artist_id
     WHERE t.id = ?
   `).get(trackId) || null;
+}
+
+// ── Queue items ──────────────────────────────────────────────────────────────
+// Shared shape between playlists and smart playlists: what the client
+// PlayerContext expects as a playable queue entry.
+
+export const QUEUE_TRACK_FIELDS = `
+  t.id, t.title, t.duration, (t.file_path IS NOT NULL) AS has_file,
+  t.play_count, t.is_favorite,
+  a.id AS album_id, a.title AS album_title, a.cover_url,
+  ar.name AS artist_name`;
+
+export function mapQueueTrack(row, i) {
+  return {
+    position: i + 1,
+    id: row.id,
+    title: row.title,
+    duration: row.duration,
+    has_file: Boolean(row.has_file),
+    play_count: row.play_count,
+    is_favorite: Boolean(row.is_favorite),
+    album_id: row.album_id,
+    album_title: row.album_title,
+    artist_name: row.artist_name,
+    cover_url: row.cover_url,
+  };
 }
 
 // ── Playlists ─────────────────────────────────────────────────────────────────
@@ -415,28 +464,14 @@ export function getPlaylistById(id) {
   if (!playlist) return null;
   // Tracks are shaped like PlayerContext queue items so the client can play them as-is.
   playlist.tracks = db.prepare(`
-    SELECT pt.id AS entry_id, pt.position AS entry_position,
-           t.id, t.title, t.duration, (t.file_path IS NOT NULL) AS has_file,
-           a.id AS album_id, a.title AS album_title, a.cover_url,
-           ar.name AS artist_name
+    SELECT pt.id AS entry_id, ${QUEUE_TRACK_FIELDS}
     FROM playlist_tracks pt
     JOIN tracks t ON t.id = pt.track_id
     JOIN albums a ON a.id = t.album_id
     JOIN artists ar ON ar.id = a.artist_id
     WHERE pt.playlist_id = ?
     ORDER BY pt.position
-  `).all(id).map((row, i) => ({
-    entry_id: row.entry_id,
-    position: i + 1,
-    id: row.id,
-    title: row.title,
-    duration: row.duration,
-    has_file: Boolean(row.has_file),
-    album_id: row.album_id,
-    album_title: row.album_title,
-    artist_name: row.artist_name,
-    cover_url: row.cover_url,
-  }));
+  `).all(id).map((row, i) => ({ entry_id: row.entry_id, ...mapQueueTrack(row, i) }));
   return playlist;
 }
 

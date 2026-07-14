@@ -35,6 +35,18 @@ function runMigrations(database) {
     database.exec("ALTER TABLE tracks ADD COLUMN file_path TEXT");
     console.log('[Migration] Added file_path column to tracks');
   }
+  if (!trackCols.includes('play_count')) {
+    database.exec("ALTER TABLE tracks ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0");
+    console.log('[Migration] Added play_count column to tracks');
+  }
+  if (!trackCols.includes('last_played_at')) {
+    database.exec("ALTER TABLE tracks ADD COLUMN last_played_at TEXT");
+    console.log('[Migration] Added last_played_at column to tracks');
+  }
+  if (!trackCols.includes('is_favorite')) {
+    database.exec("ALTER TABLE tracks ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0 CHECK(is_favorite IN (0,1))");
+    console.log('[Migration] Added is_favorite column to tracks');
+  }
   const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(t => t.name);
   if (!tables.includes('playlists')) {
     database.exec(`

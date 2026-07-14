@@ -41,7 +41,10 @@ export const SCHEMA = `
     position   INTEGER NOT NULL,
     title      TEXT NOT NULL,
     duration   TEXT,
-    file_path  TEXT
+    file_path  TEXT,
+    play_count     INTEGER NOT NULL DEFAULT 0,
+    last_played_at TEXT,
+    is_favorite    INTEGER NOT NULL DEFAULT 0 CHECK(is_favorite IN (0,1))
   );
 
   CREATE INDEX IF NOT EXISTS idx_albums_artist  ON albums(artist_id);

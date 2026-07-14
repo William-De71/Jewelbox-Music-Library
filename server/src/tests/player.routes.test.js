@@ -181,6 +181,52 @@ describe('GET /player/browse', () => {
   });
 });
 
+describe('POST /player/tracks/:id/played', () => {
+  it('increments play_count and sets last_played_at', async () => {
+    let res = await app.inject({ method: 'POST', url: `/player/tracks/${trackIds[0]}/played` });
+    expect(res.statusCode).toBe(204);
+    res = await app.inject({ method: 'POST', url: `/player/tracks/${trackIds[0]}/played` });
+    expect(res.statusCode).toBe(204);
+    const row = testDb.prepare('SELECT play_count, last_played_at FROM tracks WHERE id = ?').get(trackIds[0]);
+    expect(row.play_count).toBe(2);
+    expect(row.last_played_at).toBeTruthy();
+  });
+
+  it('returns 404 for an unknown track', async () => {
+    const res = await app.inject({ method: 'POST', url: '/player/tracks/99999/played' });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('PATCH /player/tracks/:id/favorite', () => {
+  it('sets and unsets the favourite flag', async () => {
+    let res = await app.inject({
+      method: 'PATCH', url: `/player/tracks/${trackIds[0]}/favorite`, payload: { is_favorite: true },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ id: trackIds[0], is_favorite: true });
+
+    res = await app.inject({
+      method: 'PATCH', url: `/player/tracks/${trackIds[0]}/favorite`, payload: { is_favorite: false },
+    });
+    expect(res.json().is_favorite).toBe(false);
+  });
+
+  it('rejects a non-boolean body', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: `/player/tracks/${trackIds[0]}/favorite`, payload: { is_favorite: 'yes' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 404 for an unknown track', async () => {
+    const res = await app.inject({
+      method: 'PATCH', url: '/player/tracks/99999/favorite', payload: { is_favorite: true },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
 describe('PUT/DELETE /player/albums/:id/folder', () => {
   it('associates a folder manually and matches its tracks', async () => {
     const res = await app.inject({
