@@ -1,6 +1,8 @@
-import { Music2 } from 'lucide-preact';
+import { Music2, Play } from 'lucide-preact';
+import { usePlayer } from './PlayerContext.jsx';
 
 export function AlbumRowMobile({ album, onClick, onEdit, onDelete, onLend, onRate, onAcquire, selectionMode, selected, onSelect }) {
+  const { playAlbumById } = usePlayer();
   const handleClick = (e) => {
     if (selectionMode) {
       onSelect(album.id);
@@ -40,6 +42,15 @@ export function AlbumRowMobile({ album, onClick, onEdit, onDelete, onLend, onRat
 
       {album.year && (
         <span class="text-muted flex-shrink-0" style={{ fontSize: '0.75rem' }}>{album.year}</span>
+      )}
+
+      {album.has_audio && !selectionMode && (
+        <button
+          class="btn btn-sm btn-icon btn-ghost-primary flex-shrink-0"
+          onClick={(e) => { e.stopPropagation(); playAlbumById(album.id); }}
+        >
+          <Play size={16} />
+        </button>
       )}
     </div>
   );

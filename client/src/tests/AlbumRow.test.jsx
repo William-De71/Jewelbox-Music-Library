@@ -2,11 +2,14 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/preact';
 import { AlbumRow } from '../components/AlbumRow.jsx';
 import { I18nProvider } from '../config/i18n/index.jsx';
+import { PlayerProvider } from '../components/PlayerContext.jsx';
 
 const wrap = (ui) =>
   render(
     <I18nProvider>
-      <table><tbody>{ui}</tbody></table>
+      <PlayerProvider>
+        <table><tbody>{ui}</tbody></table>
+      </PlayerProvider>
     </I18nProvider>
   );
 

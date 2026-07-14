@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'preact/hooks';
 import { api } from '../api/client.js';
 import { StarRating } from '../components/StarRating.jsx';
-import { ArrowLeft, UserCheck, UserPlus, User, Pencil, Trash2, Disc, StickyNote, ListOrdered, Clock, Music2, AlertCircle, Info, Heart, History } from 'lucide-preact';
+import { usePlayer } from '../components/PlayerContext.jsx';
+import { FolderPickerModal } from '../components/FolderPickerModal.jsx';
+import { ArrowLeft, UserCheck, UserPlus, User, Pencil, Trash2, Disc, StickyNote, ListOrdered, Clock, Music2, AlertCircle, Info, Heart, History, Play, Pause, FolderSearch, FolderX } from 'lucide-preact';
 import { useI18n } from '../config/i18n/index.jsx';
 import '../styles/AlbumDetail.css';
 
@@ -12,6 +14,7 @@ function fmt(dateStr) {
 
 export function AlbumDetail({ navigate, albumId }) {
   const { t } = useI18n();
+  const { playAlbum, current, playing, toggle } = usePlayer();
   const [album, setAlbum] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -22,6 +25,39 @@ export function AlbumDetail({ navigate, albumId }) {
   const [borrowers, setBorrowers] = useState([]);
   const [showBorrowerSuggestions, setShowBorrowerSuggestions] = useState(false);
   const [loanHistory, setLoanHistory] = useState([]);
+  const [folderPickerOpen, setFolderPickerOpen] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const playableTracks = album?.tracks?.filter((tr) => tr.has_file) || [];
+
+  const handlePlayTrack = (track) => {
+    if (current?.id === track.id) {
+      toggle();
+      return;
+    }
+    playAlbum(album, playableTracks.findIndex((tr) => tr.id === track.id));
+  };
+
+  const handleFolderAssociated = (result) => {
+    setAlbum(result.album);
+    setFolderPickerOpen(false);
+    showToast(t('musicLibrary.folderAssociated', { matched: String(result.matched), total: String(result.total) }));
+  };
+
+  const handleDissociateFolder = async () => {
+    try {
+      const result = await api.clearAlbumAudioFolder(albumId);
+      setAlbum(result.album);
+      showToast(t('musicLibrary.folderDissociated'));
+    } catch (e) {
+      showToast(e.message, 'danger');
+    }
+  };
 
   useEffect(() => {
     api.getAlbum(albumId)
@@ -217,16 +253,40 @@ export function AlbumDetail({ navigate, albumId }) {
         <div class="col-12">
           {album.tracks && album.tracks.length > 0 ? (
             <div class="card">
-              <div class="card-header d-flex align-items-center">
+              <div class="card-header d-flex align-items-center flex-wrap gap-2">
                 <h3 class="card-title mb-0">
                   <ListOrdered size={18} class="me-2" />
                   {t('albumDetail.tracks')} ({album.tracks.length})
                 </h3>
-                {album.total_duration && (
-                  <span class="ms-auto text-muted small">
-                    <Clock size={16} class="me-1" />{album.total_duration}
-                  </span>
-                )}
+                <div class="ms-auto d-flex align-items-center gap-2">
+                  {album.total_duration && (
+                    <span class="text-muted small">
+                      <Clock size={16} class="me-1" />{album.total_duration}
+                    </span>
+                  )}
+                  {album.audio_folder ? (
+                    <button
+                      class="btn btn-sm btn-outline-secondary"
+                      onClick={handleDissociateFolder}
+                      title={`${t('musicLibrary.audioFolder')} : ${album.audio_folder}`}
+                    >
+                      <FolderX size={14} class="me-1" />{t('musicLibrary.dissociateFolder')}
+                    </button>
+                  ) : (
+                    <button
+                      class="btn btn-sm btn-outline-secondary"
+                      onClick={() => setFolderPickerOpen(true)}
+                      title={t('musicLibrary.browseTitle')}
+                    >
+                      <FolderSearch size={14} class="me-1" />{t('musicLibrary.associateFolder')}
+                    </button>
+                  )}
+                  {playableTracks.length > 0 && (
+                    <button class="btn btn-sm btn-primary" onClick={() => playAlbum(album)}>
+                      <Play size={14} class="me-1" />{t('player.playAlbum')}
+                    </button>
+                  )}
+                </div>
               </div>
               <div class="table-responsive">
                 <table class="table table-sm card-table">
@@ -239,8 +299,20 @@ export function AlbumDetail({ navigate, albumId }) {
                   </thead>
                   <tbody>
                     {album.tracks.map((track) => (
-                      <tr key={track.id}>
-                        <td class="text-muted">{track.position}</td>
+                      <tr key={track.id} class={current?.id === track.id ? 'track-playing' : ''}>
+                        <td class="text-muted">
+                          {track.has_file ? (
+                            <button
+                              class="btn btn-sm btn-icon btn-ghost-secondary track-play-btn"
+                              onClick={() => handlePlayTrack(track)}
+                              title={current?.id === track.id && playing ? t('player.pause') : t('player.playTrack')}
+                            >
+                              {current?.id === track.id && playing ? <Pause size={14} /> : <Play size={14} />}
+                            </button>
+                          ) : (
+                            track.position
+                          )}
+                        </td>
                         <td>{track.title}</td>
                         <td class="text-end text-muted font-monospace small">{track.duration || '—'}</td>
                       </tr>
@@ -319,6 +391,22 @@ export function AlbumDetail({ navigate, albumId }) {
           <Trash2 size={16} class="me-1" />{t('albumDetail.delete')}
         </button>
       </div>
+
+      {/* Toast */}
+      {toast && (
+        <div class={`alert alert-${toast.type} position-fixed top-0 end-0 m-3`} style={{ zIndex: 10000 }}>
+          {toast.message}
+        </div>
+      )}
+
+      {/* Audio folder picker modal */}
+      {folderPickerOpen && (
+        <FolderPickerModal
+          albumId={albumId}
+          onClose={() => setFolderPickerOpen(false)}
+          onAssociated={handleFolderAssociated}
+        />
+      )}
 
       {/* Lend modal */}
       {lendModalOpen && (
