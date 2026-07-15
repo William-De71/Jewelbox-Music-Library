@@ -14,6 +14,13 @@ vi.mock('../db/settings.js', () => ({
   getMusicLibraryPath: vi.fn(),
 }));
 
+// The app key/secret ship with the build; tests drive them through appCreds.
+const appCreds = { apiKey: '', secret: '' };
+vi.mock('../utils/lastfmCredentials.js', () => ({
+  getAppCredentials: () => ({ apiKey: appCreds.apiKey, secret: appCreds.secret }),
+  isLastfmAvailable: () => Boolean(appCreds.apiKey && appCreds.secret),
+}));
+
 import Fastify from 'fastify';
 import { apiSignature, authUrl, getSession, scrobble } from '../utils/lastfm.js';
 import { lastfmRoutes } from '../routes/lastfm.js';
@@ -123,17 +130,19 @@ describe('lastfm routes', () => {
 
   beforeEach(() => {
     for (const key of Object.keys(settingsStore)) delete settingsStore[key];
+    appCreds.apiKey = '';
+    appCreds.secret = '';
     vi.unstubAllGlobals();
   });
 
-  it('connect returns 400 without API keys', async () => {
+  it('connect returns 503 when the build ships no API key', async () => {
     const res = await app.inject({ method: 'GET', url: '/lastfm/connect?origin=http://localhost:5173' });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(503);
   });
 
   it('connect returns the authorize URL with the origin callback', async () => {
-    settingsStore.lastfm_api_key = 'KEY';
-    settingsStore.lastfm_api_secret = 'SECRET';
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
     const res = await app.inject({ method: 'GET', url: '/lastfm/connect?origin=http://localhost:5173' });
     expect(res.statusCode).toBe(200);
     expect(res.json().url).toContain('api_key=KEY');
@@ -141,15 +150,15 @@ describe('lastfm routes', () => {
   });
 
   it('connect rejects an invalid origin', async () => {
-    settingsStore.lastfm_api_key = 'KEY';
-    settingsStore.lastfm_api_secret = 'SECRET';
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
     const res = await app.inject({ method: 'GET', url: '/lastfm/connect?origin=javascript:alert(1)' });
     expect(res.statusCode).toBe(400);
   });
 
   it('callback stores the session and redirects to /settings', async () => {
-    settingsStore.lastfm_api_key = 'KEY';
-    settingsStore.lastfm_api_secret = 'SECRET';
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
     vi.stubGlobal('fetch', vi.fn(async () => ({ json: async () => ({ session: { name: 'william', key: 'sess1' } }) })));
     const res = await app.inject({ method: 'GET', url: '/lastfm/callback?token=TOK' });
     expect(res.statusCode).toBe(302);
@@ -158,9 +167,42 @@ describe('lastfm routes', () => {
     expect(settingsStore.lastfm_username).toBe('william');
   });
 
+  it('callback records the api key the session was authorised with', async () => {
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
+    vi.stubGlobal('fetch', vi.fn(async () => ({ json: async () => ({ session: { name: 'william', key: 'sess1' } }) })));
+    await app.inject({ method: 'GET', url: '/lastfm/callback?token=TOK' });
+    expect(settingsStore.lastfm_session_api_key).toBe('KEY');
+  });
+
+  it('drops a session authorised with a different api key', async () => {
+    appCreds.apiKey = 'NEWKEY';
+    appCreds.secret = 'SECRET';
+    settingsStore.lastfm_session_key = 'sess1';
+    settingsStore.lastfm_username = 'william';
+    settingsStore.lastfm_session_api_key = 'OLDKEY';
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await app.inject({ method: 'POST', url: '/lastfm/nowplaying', payload: { track_id: trackId } });
+    expect(res.statusCode).toBe(204);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(settingsStore.lastfm_session_key).toBeUndefined();
+    expect(settingsStore.lastfm_username).toBeUndefined();
+  });
+
+  it('keeps a session authorised with the current api key', async () => {
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
+    settingsStore.lastfm_session_key = 'sess1';
+    settingsStore.lastfm_session_api_key = 'KEY';
+    vi.stubGlobal('fetch', vi.fn(async () => ({ json: async () => ({}) })));
+    await app.inject({ method: 'POST', url: '/lastfm/nowplaying', payload: { track_id: trackId } });
+    expect(settingsStore.lastfm_session_key).toBe('sess1');
+  });
+
   it('callback redirects with error flag when the session fails', async () => {
-    settingsStore.lastfm_api_key = 'KEY';
-    settingsStore.lastfm_api_secret = 'SECRET';
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
     vi.stubGlobal('fetch', vi.fn(async () => ({ json: async () => ({ error: 4, message: 'Invalid token' }) })));
     const res = await app.inject({ method: 'GET', url: '/lastfm/callback?token=BAD' });
     expect(res.statusCode).toBe(302);
@@ -176,7 +218,9 @@ describe('lastfm routes', () => {
     expect(settingsStore.lastfm_username).toBeUndefined();
   });
 
-  it('nowplaying is a silent 204 when not connected (no fetch)', async () => {
+  it('nowplaying is a silent 204 when the user has no session (no fetch)', async () => {
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const res = await app.inject({ method: 'POST', url: '/lastfm/nowplaying', payload: { track_id: trackId } });
@@ -185,9 +229,10 @@ describe('lastfm routes', () => {
   });
 
   it('nowplaying calls Last.fm with enriched metadata when connected', async () => {
-    settingsStore.lastfm_api_key = 'KEY';
-    settingsStore.lastfm_api_secret = 'SECRET';
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
     settingsStore.lastfm_session_key = 'SK';
+    settingsStore.lastfm_session_api_key = 'KEY';
     const fetchMock = vi.fn(async () => ({ json: async () => ({}) }));
     vi.stubGlobal('fetch', fetchMock);
     const res = await app.inject({ method: 'POST', url: '/lastfm/nowplaying', payload: { track_id: trackId } });
@@ -200,17 +245,19 @@ describe('lastfm routes', () => {
   });
 
   it('nowplaying returns 404 for an unknown track when connected', async () => {
-    settingsStore.lastfm_api_key = 'KEY';
-    settingsStore.lastfm_api_secret = 'SECRET';
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
     settingsStore.lastfm_session_key = 'SK';
+    settingsStore.lastfm_session_api_key = 'KEY';
     const res = await app.inject({ method: 'POST', url: '/lastfm/nowplaying', payload: { track_id: 9999 } });
     expect(res.statusCode).toBe(404);
   });
 
   it('scrobble validates started_at and passes it as timestamp', async () => {
-    settingsStore.lastfm_api_key = 'KEY';
-    settingsStore.lastfm_api_secret = 'SECRET';
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
     settingsStore.lastfm_session_key = 'SK';
+    settingsStore.lastfm_session_api_key = 'KEY';
     const fetchMock = vi.fn(async () => ({ json: async () => ({}) }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -225,9 +272,10 @@ describe('lastfm routes', () => {
   });
 
   it('scrobble stays 204 when the Last.fm call fails', async () => {
-    settingsStore.lastfm_api_key = 'KEY';
-    settingsStore.lastfm_api_secret = 'SECRET';
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
     settingsStore.lastfm_session_key = 'SK';
+    settingsStore.lastfm_session_api_key = 'KEY';
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
     const res = await app.inject({ method: 'POST', url: '/lastfm/scrobble', payload: { track_id: trackId, started_at: 1700000000 } });
     expect(res.statusCode).toBe(204);

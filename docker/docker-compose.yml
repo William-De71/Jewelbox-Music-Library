@@ -16,6 +16,9 @@ services:
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
+      # Optional: use your own Last.fm application instead of the built-in key
+      LASTFM_API_KEY: ${LASTFM_API_KEY:-}
+      LASTFM_API_SECRET: ${LASTFM_API_SECRET:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
