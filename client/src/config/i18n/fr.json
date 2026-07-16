@@ -432,6 +432,10 @@
     "noSubfolders": "Aucun sous-dossier",
     "audioFileCount": "{n} fichier(s) audio",
     "browseTitle": "Associer un dossier audio",
+    "browseLibraryTitle": "Choisir le dossier de la bibliothèque",
+    "browse": "Parcourir",
+    "parentFolder": "Dossier parent",
+    "browseHint": "Les dossiers listés sont ceux du serveur JewelBox, pas ceux de cet appareil.",
     "cancel": "Annuler"
   },
   "playlists": {

@@ -13,6 +13,7 @@ import { playerRoutes } from './routes/player.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { lastfmRoutes, dropStaleSession } from './routes/lastfm.js';
 import { isLastfmAvailable } from './utils/lastfmCredentials.js';
+import { getBrowseRoots, resolveInRoots, listDirectory, parentWithinRoots } from './utils/fsBrowser.js';
 import { smartPlaylistRoutes } from './routes/smartPlaylists.js';
 import { createDatabase, setActiveDatabase, deleteDatabase } from './db/manager.js';
 
@@ -379,6 +380,44 @@ fastify.put('/api/settings', async (req, reply) => {
     });
     return { message: 'Settings saved' };
   } catch (err) {
+    return reply.code(500).send({ error: err.message });
+  }
+});
+
+// Browse the server filesystem to pick the music library directory.
+// Unlike GET /api/player/browse, this walks absolute paths and does not need a
+// library to be configured yet — that is the whole point: it is how you choose one.
+fastify.get('/api/settings/browse', async (req, reply) => {
+  try {
+    const roots = getBrowseRoots();
+    const dir = String(req.query.dir || '');
+
+    // No dir: hand back the roots themselves as the starting point.
+    if (!dir) {
+      const entries = roots.map(root => ({
+        name: root,
+        path: root,
+        audio_files: 0,
+      }));
+      return { dir: '', parent: null, audio_files: 0, folders: entries, roots };
+    }
+
+    const abs = resolveInRoots(dir, roots);
+    if (!abs) return reply.code(403).send({ error: 'Forbidden' });
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
+      return reply.code(404).send({ error: 'Directory not found' });
+    }
+
+    const { folders, audioFiles } = await listDirectory(abs);
+    return {
+      dir: abs,
+      parent: parentWithinRoots(abs, roots),
+      audio_files: audioFiles,
+      folders,
+      roots,
+    };
+  } catch (err) {
+    if (err.code === 'EACCES') return reply.code(403).send({ error: 'Permission denied' });
     return reply.code(500).send({ error: err.message });
   }
 });

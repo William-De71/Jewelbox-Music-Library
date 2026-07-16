@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { databasesApi } from '../api/databases.js';
 import { useI18n } from '../config/i18n/index.jsx';
 import { api } from '../api/client.js';
+import { FolderPickerModal } from '../components/FolderPickerModal.jsx';
 import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music, Radio } from 'lucide-preact';
 
 export function Settings({ navigate }) {
@@ -20,6 +21,7 @@ export function Settings({ navigate }) {
   const [importing, setImporting] = useState(false);
   const [musicPath, setMusicPath] = useState('');
   const [musicPathSaving, setMusicPathSaving] = useState(false);
+  const [browsingLibrary, setBrowsingLibrary] = useState(false);
   const [lastfmStatus, setLastfmStatus] = useState({ connected: false, username: '', available: false });
   const [scanStatus, setScanStatus] = useState(null);
   const [scanning, setScanning] = useState(false);
@@ -446,14 +448,23 @@ export function Settings({ navigate }) {
                   <div class="row g-3 align-items-end">
                     <div class="col-md-8">
                       <label class="form-label">{t('musicLibrary.pathLabel')}</label>
-                      <input
-                        type="text"
-                        class="form-control font-monospace"
-                        placeholder={t('musicLibrary.pathPlaceholder')}
-                        value={musicPath}
-                        onInput={(e) => setMusicPath(e.target.value)}
-                        autocomplete="off"
-                      />
+                      <div class="input-group">
+                        <input
+                          type="text"
+                          class="form-control font-monospace"
+                          placeholder={t('musicLibrary.pathPlaceholder')}
+                          value={musicPath}
+                          onInput={(e) => setMusicPath(e.target.value)}
+                          autocomplete="off"
+                        />
+                        <button
+                          type="button"
+                          class="btn btn-outline-secondary"
+                          onClick={() => setBrowsingLibrary(true)}
+                        >
+                          <FolderSearch size={16} class="me-1" />{t('musicLibrary.browse')}
+                        </button>
+                      </div>
                     </div>
                     <div class="col-md-4 d-flex gap-2">
                       <button type="submit" class="btn btn-primary" disabled={musicPathSaving}>
@@ -700,6 +711,20 @@ export function Settings({ navigate }) {
               </div>
             </div>
           </div>
+        )}
+
+        {browsingLibrary && (
+          <FolderPickerModal
+            browse={api.settingsBrowse}
+            startDir={musicPath.trim()}
+            title={t('musicLibrary.browseLibraryTitle')}
+            hint={t('musicLibrary.browseHint')}
+            onClose={() => setBrowsingLibrary(false)}
+            onChoose={(dir) => {
+              setMusicPath(dir);
+              setBrowsingLibrary(false);
+            }}
+          />
         )}
 
       </div>
