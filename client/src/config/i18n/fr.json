@@ -484,19 +484,13 @@
   },
   "lastfm": {
     "title": "Last.fm",
-    "description": "Scrobblez automatiquement vos écoutes vers votre profil Last.fm. Une clé API d'application est nécessaire (à créer une seule fois par l'administrateur) ; chaque utilisateur connecte ensuite simplement son compte.",
-    "howTo": "Créer une clé API sur last.fm/api/account/create",
-    "apiKey": "Clé API",
-    "apiSecret": "Secret partagé",
-    "secretConfigured": "Configuré — laisser vide pour conserver",
-    "save": "Enregistrer",
-    "saved": "Paramètres Last.fm enregistrés",
+    "description": "Scrobblez automatiquement vos écoutes vers votre profil Last.fm. Connectez votre compte : vous serez redirigé vers Last.fm pour autoriser JewelBox.",
+    "unavailable": "Le scrobbling Last.fm n'est pas disponible dans cette version.",
     "connect": "Connecter mon compte Last.fm",
-    "connectHint": "Enregistrez d'abord la clé et le secret, puis connectez votre compte.",
     "connectedAs": "Connecté en tant que {name}",
     "disconnect": "Déconnecter",
     "disconnected": "Compte Last.fm déconnecté",
-    "connectError": "La connexion à Last.fm a échoué. Vérifiez la clé API et le secret."
+    "connectError": "La connexion à Last.fm a échoué. Veuillez réessayer."
   },
   "about": {
     "title": "À propos de JewelBox",

@@ -82,10 +82,24 @@ Créez des listes de lecture depuis le menu **Playlists** : ajoutez une piste ou
 
 ### Scrobbling Last.fm
 
-1. **Une seule fois (admin)** : créez une clé API sur [last.fm/api/account/create](https://www.last.fm/api/account/create) (la Callback URL peut rester vide) et renseignez la clé + le secret dans **Paramètres → Last.fm**.
-2. **Chaque utilisateur** : cliquez sur « Connecter mon compte Last.fm », autorisez l'application sur last.fm — c'est tout.
+Aucune configuration : rendez-vous dans **Paramètres → Last.fm**, cliquez sur « Connecter mon compte Last.fm » et autorisez l'application sur last.fm — c'est tout.
 
-Les écoutes sont scrobblées selon la règle Last.fm : piste d'au moins 30 secondes, écoutée à moitié ou pendant 4 minutes. Le « now playing » s'affiche dès le début de la lecture. Les secrets ne quittent jamais le serveur.
+Les écoutes sont scrobblées selon la règle Last.fm : piste d'au moins 30 secondes, écoutée à moitié ou pendant 4 minutes. Le « now playing » s'affiche dès le début de la lecture. Votre clé de session ne quitte jamais le serveur.
+
+<details>
+<summary>Utiliser votre propre clé API Last.fm</summary>
+
+JewelBox embarque sa propre clé d'application Last.fm, comme la plupart des lecteurs de bureau (Strawberry, Clementine…). Cette clé identifie l'application, pas votre compte : chaque utilisateur autorise son propre profil et obtient une clé de session personnelle.
+
+Pour utiliser votre propre application Last.fm, définissez ces deux variables d'environnement sur le serveur :
+
+```bash
+LASTFM_API_KEY=votre_cle
+LASTFM_API_SECRET=votre_secret
+```
+
+Les sessions autorisées avec une autre clé sont automatiquement invalidées : il suffit de reconnecter son compte.
+</details>
 
 ---
 

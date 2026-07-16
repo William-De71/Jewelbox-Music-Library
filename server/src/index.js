@@ -11,7 +11,8 @@ import { searchRoutes } from './routes/search.js';
 import { versionRoutes } from './routes/version.js';
 import { playerRoutes } from './routes/player.js';
 import { playlistRoutes } from './routes/playlists.js';
-import { lastfmRoutes } from './routes/lastfm.js';
+import { lastfmRoutes, dropStaleSession } from './routes/lastfm.js';
+import { isLastfmAvailable } from './utils/lastfmCredentials.js';
 import { smartPlaylistRoutes } from './routes/smartPlaylists.js';
 import { createDatabase, setActiveDatabase, deleteDatabase } from './db/manager.js';
 
@@ -336,16 +337,21 @@ fastify.delete('/api/databases/:id', async (req, reply) => {
 
 // Get settings
 // Secrets never leave the server; the client only sees "configured" booleans.
-const HIDDEN_SETTINGS = ['lastfm_api_secret', 'lastfm_session_key'];
+// The Last.fm app key/secret ship with the build (see utils/lastfmCredentials.js)
+// and are no longer stored in settings; legacy rows are hidden and ignored.
+const HIDDEN_SETTINGS = ['lastfm_api_key', 'lastfm_api_secret', 'lastfm_session_key', 'lastfm_session_api_key'];
 
 fastify.get('/api/settings', async (req, reply) => {
   try {
     const db = getManagerDb();
+    // Sessions authorised with a different app key are dead: clear them first
+    // so the UI never reports "connected" for a session that cannot scrobble.
+    dropStaleSession();
     const rows = db.prepare('SELECT key, value FROM settings').all();
     const settings = {};
     rows.forEach(r => { if (!HIDDEN_SETTINGS.includes(r.key)) settings[r.key] = r.value; });
     settings.lastfm_connected = rows.some(r => r.key === 'lastfm_session_key' && r.value);
-    settings.lastfm_api_secret_set = rows.some(r => r.key === 'lastfm_api_secret' && r.value);
+    settings.lastfm_available = isLastfmAvailable();
     return settings;
   } catch (err) {
     return reply.code(500).send({ error: err.message });
@@ -361,11 +367,14 @@ fastify.put('/api/settings', async (req, reply) => {
       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
     `);
     const entries = Object.entries(req.body);
+    const READONLY_SETTINGS = new Set([
+      // Synthetic flags from GET /api/settings.
+      'lastfm_connected', 'lastfm_available',
+      // App credentials ship with the build; the session key is set by the auth flow.
+      'lastfm_api_key', 'lastfm_api_secret', 'lastfm_session_key', 'lastfm_session_api_key',
+    ]);
     entries.forEach(([key, value]) => {
-      // Synthetic flags from GET /api/settings are never stored,
-      // and an empty secret must not erase the configured one.
-      if (key === 'lastfm_connected' || key === 'lastfm_api_secret_set') return;
-      if (key === 'lastfm_api_secret' && !value) return;
+      if (READONLY_SETTINGS.has(key)) return;
       stmt.run(key, value ?? '');
     });
     return { message: 'Settings saved' };
