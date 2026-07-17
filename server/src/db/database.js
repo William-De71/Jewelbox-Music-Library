@@ -68,6 +68,16 @@ function runMigrations(database) {
     `);
     console.log('[Migration] Created playlists tables');
   }
+  if (!tables.includes('dynamic_mix_tracks')) {
+    database.exec(`
+      DROP TABLE IF EXISTS random50_tracks;
+      CREATE TABLE dynamic_mix_tracks (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        track_id INTEGER NOT NULL UNIQUE REFERENCES tracks(id) ON DELETE CASCADE
+      );
+    `);
+    console.log('[Migration] Created dynamic_mix_tracks table');
+  }
   if (!tables.includes('loan_history')) {
     database.exec(`
       CREATE TABLE loan_history (

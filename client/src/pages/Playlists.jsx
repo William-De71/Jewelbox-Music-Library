@@ -5,16 +5,16 @@ import { usePlayer } from '../components/PlayerContext.jsx';
 import {
   ListMusic, Plus, Play, Pause, Pencil, Trash2, X, Check, ArrowLeft,
   ChevronUp, ChevronDown, AlertCircle, Clock, Heart,
-  Sparkles, Dices, History, Music, ChartColumn, Library, Infinity as InfinityIcon,
+  Sparkles, History, Music, ChartColumn, Library, Infinity as InfinityIcon,
 } from 'lucide-preact';
 
 const SMART_KEYS = [
-  'newest', 'random50', 'ever_played', 'never_played', 'last_played',
+  'newest', 'ever_played', 'never_played', 'last_played',
   'most_played', 'favourites', 'all_tracks', 'dynamic_mix',
 ];
 
 const SMART_ICONS = {
-  newest: Sparkles, random50: Dices, ever_played: History, never_played: Music,
+  newest: Sparkles, ever_played: History, never_played: Music,
   last_played: Clock, most_played: ChartColumn, favourites: Heart,
   all_tracks: Library, dynamic_mix: InfinityIcon,
 };
@@ -164,7 +164,7 @@ export function Playlists({ navigate, params }) {
       toggle();
       return;
     }
-    playTracks(smartPlayable, smartPlayable.findIndex((tr) => tr.id === track.id));
+    playTracks(smartPlayable, smartPlayable.findIndex((tr) => tr.id === track.id), { dynamic: smartKey === 'dynamic_mix' });
   };
 
   const handleToggleSmartFavorite = (track) => {
