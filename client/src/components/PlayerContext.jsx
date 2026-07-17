@@ -62,7 +62,6 @@ export function PlayerProvider({ children }) {
   repeatRef.current = repeat;
   shuffleRef.current = shuffle;
   const originalQueueRef = useRef([]); // pre-shuffle order, restored when shuffle is turned off
-  const extendingRef = useRef(false); // guards the dynamic mix extension fetch
 
   // Last.fm scrobbling state for the current playback (reset on every track change)
   const scrobbleRef = useRef({ trackId: null, startedAt: 0, played: 0, lastTime: 0, scrobbled: false });
@@ -117,6 +116,37 @@ export function PlayerProvider({ children }) {
     playAt(q, 0);
   }, [playAt]);
 
+  // Dynamic mix: a fully played track leaves the server-side list; mirror
+  // that locally by dropping it and appending the server's replacements at the
+  // bottom. With `resume`, the queue had run dry: chain onto the first one.
+  const consumeDynamicMix = useCallback((endedId, resume) => {
+    api.dynamicMixPlayed(endedId)
+      .then((res) => {
+        if (!dynamicMixRef.current) return; // another queue took over meanwhile
+        const q = queueRef.current;
+        const kept = q.filter(t => t.id !== endedId);
+        const keptIds = new Set(kept.map(t => t.id));
+        const appended = (res.tracks || []).filter(t => t.has_file !== false && !keptIds.has(t.id));
+        const newQueue = [...kept, ...appended];
+        if (!newQueue.length) return;
+        originalQueueRef.current = [
+          ...originalQueueRef.current.filter(t => t.id !== endedId),
+          ...appended,
+        ];
+        if (resume) {
+          if (appended.length) playAt(newQueue, kept.length);
+        } else {
+          const playingId = q[indexRef.current]?.id;
+          const newIndex = Math.max(0, newQueue.findIndex(t => t.id === playingId));
+          queueRef.current = newQueue;
+          indexRef.current = newIndex;
+          setQueue(newQueue);
+          setIndex(newIndex);
+        }
+      })
+      .catch(() => {}); // offline: the local queue simply keeps the track
+  }, [playAt]);
+
   // tracks must be queue-shaped items ({id, title, album_id, artist_name, cover_url, ...})
   const playTracks = useCallback((tracks, startIndex = 0, { dynamic = false } = {}) => {
     const base = (tracks || []).filter(t => t.has_file !== false);
@@ -124,7 +154,6 @@ export function PlayerProvider({ children }) {
     originalQueueRef.current = base;
     setDynamicMix(dynamic);
     dynamicMixRef.current = dynamic;
-    extendingRef.current = false;
     let newQueue = base;
     let newIndex = Math.min(startIndex, base.length - 1);
     if (shuffleRef.current) {
@@ -257,7 +286,6 @@ export function PlayerProvider({ children }) {
     setExpanded(false);
     setDynamicMix(false);
     dynamicMixRef.current = false;
-    extendingRef.current = false;
     originalQueueRef.current = [];
   }, []);
 
@@ -289,12 +317,16 @@ export function PlayerProvider({ children }) {
     };
     const onLoadedMetadata = () => setDuration(audio.duration || 0);
     const onEnded = () => {
+      // repeat one: the track loops on purpose, keep it in the mix list
       if (repeatRef.current === 'one') return replayCurrent();
       const q = queueRef.current;
       const i = indexRef.current;
-      if (i + 1 < q.length) playAt(q, i + 1);
+      const ended = q[i];
+      const hasNext = i + 1 < q.length;
+      if (hasNext) playAt(q, i + 1);
       else if (!dynamicMixRef.current && repeatRef.current === 'all' && q.length) wrapAround();
       else setPlaying(false);
+      if (dynamicMixRef.current && ended) consumeDynamicMix(ended.id, !hasNext);
     };
     const onError = () => setPlaying(false);
 
@@ -313,27 +345,6 @@ export function PlayerProvider({ children }) {
       audio.removeEventListener('error', onError);
     };
   }, [playAt]);
-
-  // Dynamic mix: preload 50 more tracks as soon as the last one starts, so the
-  // queue never runs dry and 'onEnded' stays synchronous.
-  useEffect(() => {
-    if (!dynamicMix || index < 0 || queue.length === 0) return;
-    if (index < queue.length - 1) return; // not on the last track yet
-    if (extendingRef.current) return;
-    extendingRef.current = true;
-    const exclude = queue.slice(-50).map(t => t.id); // avoid immediate repeats
-    api.getSmartPlaylist('dynamic_mix', exclude)
-      .then(res => {
-        const fresh = (res.tracks || []).filter(t => t.has_file !== false);
-        if (!fresh.length) return;
-        const newQueue = [...queueRef.current, ...fresh];
-        queueRef.current = newQueue;
-        setQueue(newQueue);
-        originalQueueRef.current = [...originalQueueRef.current, ...fresh];
-      })
-      .catch(() => {})
-      .finally(() => { extendingRef.current = false; });
-  }, [dynamicMix, index, queue.length]);
 
   // MediaSession: lock-screen / notification controls (Android, GNOME)
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { getSmartPlaylists, getSmartPlaylistTracks } from '../db/smartPlaylists.js';
+import { getSmartPlaylists, getSmartPlaylistTracks, consumeDynamicMixTrack } from '../db/smartPlaylists.js';
 
 export async function smartPlaylistRoutes(fastify) {
   fastify.get('/smart-playlists', async (req, reply) => {
@@ -9,13 +9,20 @@ export async function smartPlaylistRoutes(fastify) {
     }
   });
 
+  // A dynamic mix track finished playing: drop it from the list and refill.
+  fastify.post('/smart-playlists/dynamic_mix/played', async (req, reply) => {
+    try {
+      const trackId = Number(req.body?.track_id);
+      if (!Number.isInteger(trackId)) return reply.code(400).send({ error: 'track_id must be an integer' });
+      return consumeDynamicMixTrack(trackId);
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
   fastify.get('/smart-playlists/:key', async (req, reply) => {
     try {
-      const excludeIds = String(req.query.exclude || '')
-        .split(',')
-        .map(Number)
-        .filter(Number.isInteger);
-      const tracks = getSmartPlaylistTracks(req.params.key, { excludeIds });
+      const tracks = getSmartPlaylistTracks(req.params.key);
       if (!tracks) return reply.code(404).send({ error: 'Unknown smart playlist' });
       return { key: req.params.key, tracks };
     } catch (err) {

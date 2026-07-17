@@ -48,12 +48,12 @@ afterAll(async () => {
 });
 
 describe('GET /smart-playlists', () => {
-  it('lists the 9 smart playlists with coherent counts', async () => {
+  it('lists the 8 smart playlists with coherent counts', async () => {
     const res = await app.inject({ method: 'GET', url: '/smart-playlists' });
     expect(res.statusCode).toBe(200);
     const data = res.json().data;
     expect(data.map(p => p.key)).toEqual([
-      'newest', 'random50', 'ever_played', 'never_played', 'last_played',
+      'newest', 'ever_played', 'never_played', 'last_played',
       'most_played', 'favourites', 'all_tracks', 'dynamic_mix',
     ]);
     const byKey = Object.fromEntries(data.map(p => [p.key, p.track_count]));
@@ -61,6 +61,7 @@ describe('GET /smart-playlists', () => {
     expect(byKey.ever_played).toBe(2);
     expect(byKey.never_played).toBe(1);
     expect(byKey.favourites).toBe(1);
+    expect(byKey.dynamic_mix).toBe(3);
   });
 });
 
@@ -107,27 +108,61 @@ describe('GET /smart-playlists/:key', () => {
     expect(res.json().tracks[0].id).toBe(ids.neverPlayed); // Kid A is newer
   });
 
-  it('dynamic_mix honors the exclude parameter', async () => {
-    const res = await app.inject({ method: 'GET', url: `/smart-playlists/dynamic_mix?exclude=${ids.airbag}` });
-    const trackIds = res.json().tracks.map(t => t.id);
-    expect(trackIds).not.toContain(ids.airbag);
-    expect(trackIds.length).toBe(2);
-  });
-
-  it('falls back to repeats when exclude would empty the result', async () => {
-    const all = [ids.airbag, ids.paranoid, ids.neverPlayed].join(',');
-    const res = await app.inject({ method: 'GET', url: `/smart-playlists/dynamic_mix?exclude=${all}` });
-    expect(res.json().tracks.length).toBe(3);
-  });
-
-  it('ignores non-integer exclude values', async () => {
-    const res = await app.inject({ method: 'GET', url: '/smart-playlists/random50?exclude=abc,1.5,' });
-    expect(res.statusCode).toBe(200);
-    expect(res.json().tracks.length).toBe(3);
-  });
-
   it('returns 404 for an unknown key', async () => {
     const res = await app.inject({ method: 'GET', url: '/smart-playlists/unknown' });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('dynamic mix persistence', () => {
+  const getIds = async () =>
+    (await app.inject({ method: 'GET', url: '/smart-playlists/dynamic_mix' })).json().tracks.map(t => t.id);
+
+  it('keeps the same list across requests', async () => {
+    const first = await getIds();
+    expect(first).toHaveLength(3); // whole playable library fits under 50
+    expect(first).not.toContain(ids.noFile);
+    expect(await getIds()).toEqual(first);
+  });
+
+  it('removes a played track and refills the list at the bottom', async () => {
+    const before = await getIds();
+    const played = before[0];
+    const res = await app.inject({
+      method: 'POST', url: '/smart-playlists/dynamic_mix/played', payload: { track_id: played },
+    });
+    expect(res.statusCode).toBe(200);
+    const { removed, tracks } = res.json();
+    expect(removed).toBe(true);
+    // Library of 3: the played track cycles back to the bottom of the list
+    expect(tracks.map(t => t.id)).toEqual([...before.slice(1), played]);
+    expect(await getIds()).toEqual(tracks.map(t => t.id)); // persisted
+  });
+
+  it('reports removed=false for a track not in the list', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/smart-playlists/dynamic_mix/played', payload: { track_id: 99999 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().removed).toBe(false);
+    expect(res.json().tracks).toHaveLength(3);
+  });
+
+  it('rejects a non-integer track_id', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/smart-playlists/dynamic_mix/played', payload: { track_id: 'abc' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('drops tracks that lost their audio file and refills', async () => {
+    const before = await getIds();
+    const victim = before[0];
+    testDb.prepare('UPDATE tracks SET file_path = NULL WHERE id = ?').run(victim);
+    const after = await getIds();
+    expect(after).not.toContain(victim);
+    expect(after).toHaveLength(2); // only 2 playable tracks remain in the library
+    testDb.prepare('UPDATE tracks SET file_path = ? WHERE id = ?').run('x/restore.mp3', victim);
+    expect(await getIds()).toHaveLength(3); // restored track is re-picked to fill up
   });
 });
