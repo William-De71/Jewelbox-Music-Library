@@ -474,6 +474,10 @@
     "updatedAt": "Modifiée le",
     "smartTitle": "Listes intelligentes",
     "listen": "Écouter",
+    "mixRefresh": "Nouveau mix",
+    "mixRefreshed": "Nouveau mix généré",
+    "mixRemove": "Retirer du mix",
+    "mixRemoved": "Piste retirée du mix",
     "smart": {
       "newest": "Ajouts récents",
       "ever_played": "Déjà écoutées",

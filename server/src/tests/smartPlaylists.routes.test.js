@@ -155,6 +155,32 @@ describe('dynamic mix persistence', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('manually removes a track and refills the list at the bottom', async () => {
+    const before = await getIds();
+    const disliked = before[1];
+    const res = await app.inject({
+      method: 'DELETE', url: `/smart-playlists/dynamic_mix/tracks/${disliked}`,
+    });
+    expect(res.statusCode).toBe(200);
+    const { removed, tracks } = res.json();
+    expect(removed).toBe(true);
+    // Library of 3: the removed track cycles back to the bottom of the list
+    expect(tracks.map(t => t.id)).toEqual([...before.filter(id => id !== disliked), disliked]);
+    expect(await getIds()).toEqual(tracks.map(t => t.id)); // persisted
+  });
+
+  it('manual removal reports removed=false for a track not in the list', async () => {
+    const res = await app.inject({ method: 'DELETE', url: '/smart-playlists/dynamic_mix/tracks/99999' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().removed).toBe(false);
+    expect(res.json().tracks).toHaveLength(3);
+  });
+
+  it('manual removal rejects a non-integer trackId', async () => {
+    const res = await app.inject({ method: 'DELETE', url: '/smart-playlists/dynamic_mix/tracks/abc' });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('refresh draws a brand-new persistent mix', async () => {
     const res = await app.inject({ method: 'POST', url: '/smart-playlists/dynamic_mix/refresh' });
     expect(res.statusCode).toBe(200);

@@ -105,6 +105,8 @@ export const api = {
   getSmartPlaylists: () => request('GET', '/smart-playlists'),
   getSmartPlaylist: (key) => request('GET', `/smart-playlists/${key}`),
   dynamicMixPlayed: (track_id) => request('POST', '/smart-playlists/dynamic_mix/played', { track_id }),
+  dynamicMixRemove: (track_id) => request('DELETE', `/smart-playlists/dynamic_mix/tracks/${track_id}`),
+  dynamicMixRefresh: () => request('POST', '/smart-playlists/dynamic_mix/refresh'),
 
   // Last.fm
   lastfmConnectUrl: () => request('GET', `/lastfm/connect?origin=${encodeURIComponent(window.location.origin)}`),

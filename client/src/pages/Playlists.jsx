@@ -4,7 +4,7 @@ import { useI18n } from '../config/i18n/index.jsx';
 import { usePlayer } from '../components/PlayerContext.jsx';
 import {
   ListMusic, Plus, Play, Pause, Pencil, Trash2, X, Check, ArrowLeft,
-  ChevronUp, ChevronDown, AlertCircle, Clock, Heart,
+  ChevronUp, ChevronDown, AlertCircle, Clock, Heart, RefreshCw,
   Sparkles, History, Music, ChartColumn, Library, Infinity as InfinityIcon,
 } from 'lucide-preact';
 
@@ -34,7 +34,10 @@ function fmtDate(dateStr) {
 
 export function Playlists({ navigate, params }) {
   const { t } = useI18n();
-  const { playTracks, playDynamicMix, current, playing, toggle, toggleFavorite } = usePlayer();
+  const {
+    playTracks, playDynamicMix, current, playing, toggle, toggleFavorite,
+    removeDynamicMixTrack, refreshDynamicMix,
+  } = usePlayer();
   const [playlists, setPlaylists] = useState(null);
   const [smartPlaylists, setSmartPlaylists] = useState(null);
   const [playlist, setPlaylist] = useState(null);
@@ -167,6 +170,31 @@ export function Playlists({ navigate, params }) {
     playTracks(smartPlayable, smartPlayable.findIndex((tr) => tr.id === track.id), { dynamic: smartKey === 'dynamic_mix' });
   };
 
+  const [mixBusy, setMixBusy] = useState(false);
+
+  const handleRefreshMix = async () => {
+    setMixBusy(true);
+    try {
+      const tracks = await refreshDynamicMix();
+      setSmart({ key: 'dynamic_mix', tracks });
+      showToast(t('playlists.mixRefreshed'));
+    } catch (err) {
+      showToast(err.message, 'danger');
+    } finally {
+      setMixBusy(false);
+    }
+  };
+
+  const handleRemoveMixTrack = async (track) => {
+    try {
+      const tracks = await removeDynamicMixTrack(track.id);
+      setSmart({ key: 'dynamic_mix', tracks });
+      showToast(t('playlists.mixRemoved'));
+    } catch (err) {
+      showToast(err.message, 'danger');
+    }
+  };
+
   const handleToggleSmartFavorite = (track) => {
     const next = !track.is_favorite;
     setSmart((s) => ({ ...s, tracks: s.tracks.map((tr) => (tr.id === track.id ? { ...tr, is_favorite: next } : tr)) }));
@@ -212,13 +240,18 @@ export function Playlists({ navigate, params }) {
                   </h2>
                   <div class="text-muted">{t('playlists.trackCount', { n: String(smart.tracks.length) })}</div>
                 </div>
-                {smartPlayable.length > 0 && (
-                  <div class="col-auto">
+                <div class="col-auto d-flex gap-2">
+                  {smartKey === 'dynamic_mix' && (
+                    <button class="btn btn-outline-secondary" onClick={handleRefreshMix} disabled={mixBusy}>
+                      <RefreshCw size={16} class={`me-1${mixBusy ? ' icon-spin' : ''}`} />{t('playlists.mixRefresh')}
+                    </button>
+                  )}
+                  {smartPlayable.length > 0 && (
                     <button class="btn btn-primary" onClick={handlePlaySmart}>
                       <Play size={16} class="me-1" />{t('playlists.listen')}
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
 
@@ -267,7 +300,7 @@ export function Playlists({ navigate, params }) {
                             </button>
                           </td>
                           <td class="text-end text-muted font-monospace small">{track.duration || '—'}</td>
-                          <td class="text-end">
+                          <td class="text-end text-nowrap">
                             <button
                               class={`btn btn-sm btn-icon ${track.is_favorite ? 'text-danger' : 'btn-ghost-secondary'}`}
                               onClick={() => handleToggleSmartFavorite(track)}
@@ -275,6 +308,15 @@ export function Playlists({ navigate, params }) {
                             >
                               <Heart size={14} fill={track.is_favorite ? 'currentColor' : 'none'} />
                             </button>
+                            {smartKey === 'dynamic_mix' && (
+                              <button
+                                class="btn btn-sm btn-icon btn-ghost-danger"
+                                onClick={() => handleRemoveMixTrack(track)}
+                                title={t('playlists.mixRemove')}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
