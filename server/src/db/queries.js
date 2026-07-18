@@ -583,3 +583,114 @@ export function closeLoan(albumId) {
               WHERE album_id = ? AND returned_at IS NULL`)
     .run(albumId);
 }
+
+// ── Play history & home ───────────────────────────────────────────────────────
+// One row per (item_type, item_id): replaying an item refreshes played_at so it
+// moves back to the top instead of duplicating. No FK — the target is
+// polymorphic (albums or playlists); orphans are purged on read.
+
+const PLAY_HISTORY_CAP = 50;
+
+export function recordPlay(itemType, itemId) {
+  const db = getDb();
+  const table = itemType === 'album' ? 'albums' : 'playlists';
+  const exists = db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(itemId);
+  if (!exists) return false;
+  db.transaction(() => {
+    db.prepare(`
+      INSERT INTO play_history (item_type, item_id) VALUES (?, ?)
+      ON CONFLICT(item_type, item_id) DO UPDATE SET played_at = datetime('now')
+    `).run(itemType, itemId);
+    db.prepare(`
+      DELETE FROM play_history WHERE id NOT IN
+        (SELECT id FROM play_history ORDER BY played_at DESC, id DESC LIMIT ?)
+    `).run(PLAY_HISTORY_CAP);
+  })();
+  return true;
+}
+
+export function getRecentPlayedItems(limit = 8) {
+  const db = getDb();
+  db.prepare(`
+    DELETE FROM play_history WHERE
+      (item_type = 'album'    AND item_id NOT IN (SELECT id FROM albums)) OR
+      (item_type = 'playlist' AND item_id NOT IN (SELECT id FROM playlists))
+  `).run();
+  const entries = db.prepare(`
+    SELECT item_type, item_id, played_at FROM play_history
+    ORDER BY played_at DESC, id DESC LIMIT ?
+  `).all(limit);
+
+  const albumStmt = db.prepare(`${ALBUM_SELECT} WHERE a.id = ?`);
+  const playlistStmt = db.prepare(`
+    SELECT p.id, p.name, p.created_at, p.updated_at, COUNT(pt.id) AS track_count
+    FROM playlists p
+    LEFT JOIN playlist_tracks pt ON pt.playlist_id = p.id
+    WHERE p.id = ?
+    GROUP BY p.id
+  `);
+  const playlistDurationsStmt = db.prepare(`
+    SELECT t.duration FROM playlist_tracks pt
+    JOIN tracks t ON t.id = pt.track_id
+    WHERE pt.playlist_id = ?
+  `);
+  // A playlist has no cover of its own: borrow the first track's album cover.
+  const playlistCoverStmt = db.prepare(`
+    SELECT a.cover_url FROM playlist_tracks pt
+    JOIN tracks t ON t.id = pt.track_id
+    JOIN albums a ON a.id = t.album_id
+    WHERE pt.playlist_id = ? AND a.cover_url IS NOT NULL
+    ORDER BY pt.position LIMIT 1
+  `);
+
+  return entries.map(({ item_type, item_id, played_at }) => {
+    if (item_type === 'album') {
+      return { item_type, played_at, album: mapAlbum(albumStmt.get(item_id)) };
+    }
+    const playlist = playlistStmt.get(item_id);
+    const seconds = playlistDurationsStmt.all(item_id)
+      .reduce((sum, { duration }) => sum + (durationToSeconds(duration) || 0), 0);
+    playlist.total_duration_seconds = seconds;
+    playlist.cover_url = playlistCoverStmt.get(item_id)?.cover_url ?? null;
+    return { item_type, played_at, playlist };
+  });
+}
+
+// Weighted random sample of playable albums: high ratings and albums not
+// listened to recently are favoured. Weighting is done in JS rather than SQL
+// so it doesn't depend on SQLite math functions being available.
+export function getSuggestedAlbums({ excludeIds = [], limit = 12 } = {}) {
+  const db = getDb();
+  const notIn = excludeIds.length ? `AND a.id NOT IN (${excludeIds.map(() => '?').join(',')})` : '';
+  const candidates = db.prepare(`
+    SELECT a.id, COALESCE(a.rating, 3) AS rating, MAX(t.last_played_at) AS last_played_at
+    FROM albums a
+    JOIN tracks t ON t.album_id = a.id
+    WHERE t.file_path IS NOT NULL AND a.is_wanted = 0 ${notIn}
+    GROUP BY a.id
+  `).all(...excludeIds);
+
+  const now = Date.now();
+  const recencyFactor = (lastPlayedAt) => {
+    if (!lastPlayedAt) return 1.0;
+    // SQLite datetime('now') is UTC without a timezone suffix.
+    const days = (now - Date.parse(lastPlayedAt.replace(' ', 'T') + 'Z')) / 86_400_000;
+    if (Number.isNaN(days) || days >= 90) return 1.0;
+    if (days < 7) return 0.05;
+    if (days < 30) return 0.25;
+    return 0.6;
+  };
+
+  // Efraimidis–Spirakis: sample without replacement, key = random^(1/weight).
+  const sampled = candidates
+    .map(c => ({ id: c.id, key: Math.random() ** (1 / (c.rating ** 2 * recencyFactor(c.last_played_at))) }))
+    .sort((a, b) => b.key - a.key)
+    .slice(0, limit);
+  if (!sampled.length) return [];
+
+  const rows = db.prepare(
+    `${ALBUM_SELECT} WHERE a.id IN (${sampled.map(() => '?').join(',')})`,
+  ).all(...sampled.map(s => s.id));
+  const byId = new Map(rows.map(r => [r.id, mapAlbum(r)]));
+  return sampled.map(s => byId.get(s.id)).filter(Boolean);
+}
