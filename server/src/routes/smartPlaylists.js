@@ -1,4 +1,9 @@
-import { getSmartPlaylists, getSmartPlaylistTracks, consumeDynamicMixTrack } from '../db/smartPlaylists.js';
+import {
+  getSmartPlaylists,
+  getSmartPlaylistTracks,
+  consumeDynamicMixTrack,
+  refreshDynamicMix,
+} from '../db/smartPlaylists.js';
 
 export async function smartPlaylistRoutes(fastify) {
   fastify.get('/smart-playlists', async (req, reply) => {
@@ -15,6 +20,15 @@ export async function smartPlaylistRoutes(fastify) {
       const trackId = Number(req.body?.track_id);
       if (!Number.isInteger(trackId)) return reply.code(400).send({ error: 'track_id must be an integer' });
       return consumeDynamicMixTrack(trackId);
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Full refresh: discard the current mix and draw a completely new one.
+  fastify.post('/smart-playlists/dynamic_mix/refresh', async (req, reply) => {
+    try {
+      return { key: 'dynamic_mix', tracks: refreshDynamicMix() };
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }
