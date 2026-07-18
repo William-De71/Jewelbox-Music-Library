@@ -268,3 +268,41 @@ describe('PUT/DELETE /player/albums/:id/folder', () => {
     expect(body.album.tracks.every(t => !t.has_file)).toBe(true);
   });
 });
+describe('GET /player/search', () => {
+  it('returns 400 when q is missing or too short', async () => {
+    expect((await app.inject({ method: 'GET', url: '/player/search' })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/player/search?q=a' })).statusCode).toBe(400);
+  });
+
+  it('matches track titles with the queue-track shape', async () => {
+    const res = await app.inject({ method: 'GET', url: '/player/search?q=paranoid' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(Array.isArray(body.albums)).toBe(true);
+    const track = body.tracks.find(t => t.title === 'Paranoid Android');
+    expect(track).toBeDefined();
+    expect(track.album_title).toBe('OK Computer');
+    expect(track.artist_name).toBe('Radiohead');
+    expect(typeof track.has_file).toBe('boolean');
+    expect(typeof track.is_favorite).toBe('boolean');
+  });
+
+  it('finds albums by artist name', async () => {
+    const res = await app.inject({ method: 'GET', url: '/player/search?q=radiohead' });
+    const body = res.json();
+    expect(body.albums.some(a => a.title === 'OK Computer')).toBe(true);
+  });
+
+  it('excludes wishlist albums and their tracks', async () => {
+    const artistId = testDb.prepare('INSERT INTO artists (name) VALUES (?)').run('Wanted Artist').lastInsertRowid;
+    const wantedId = testDb.prepare('INSERT INTO albums (title, artist_id, is_wanted) VALUES (?, ?, 1)')
+      .run('Paranoid Wanted Album', artistId).lastInsertRowid;
+    testDb.prepare('INSERT INTO tracks (album_id, position, title) VALUES (?, ?, ?)')
+      .run(wantedId, 1, 'Paranoid Wanted Song');
+
+    const res = await app.inject({ method: 'GET', url: '/player/search?q=paranoid' });
+    const body = res.json();
+    expect(body.tracks.some(t => t.title === 'Paranoid Wanted Song')).toBe(false);
+    expect(body.albums.some(a => a.title === 'Paranoid Wanted Album')).toBe(false);
+  });
+});
