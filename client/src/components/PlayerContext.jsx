@@ -116,6 +116,19 @@ export function PlayerProvider({ children }) {
     playAt(q, 0);
   }, [playAt]);
 
+  // Mirrors a server-side dynamic mix update locally: drops `removedId` from
+  // the queue and appends the server's replacements at the bottom.
+  const syncDynamicQueue = (removedId, serverTracks) => {
+    const kept = queueRef.current.filter(t => t.id !== removedId);
+    const keptIds = new Set(kept.map(t => t.id));
+    const appended = (serverTracks || []).filter(t => t.has_file !== false && !keptIds.has(t.id));
+    originalQueueRef.current = [
+      ...originalQueueRef.current.filter(t => t.id !== removedId),
+      ...appended,
+    ];
+    return { kept, appended, newQueue: [...kept, ...appended] };
+  };
+
   // Dynamic mix: a fully played track leaves the server-side list; mirror
   // that locally by dropping it and appending the server's replacements at the
   // bottom. With `resume`, the queue had run dry: chain onto the first one.
@@ -124,15 +137,8 @@ export function PlayerProvider({ children }) {
       .then((res) => {
         if (!dynamicMixRef.current) return; // another queue took over meanwhile
         const q = queueRef.current;
-        const kept = q.filter(t => t.id !== endedId);
-        const keptIds = new Set(kept.map(t => t.id));
-        const appended = (res.tracks || []).filter(t => t.has_file !== false && !keptIds.has(t.id));
-        const newQueue = [...kept, ...appended];
+        const { kept, appended, newQueue } = syncDynamicQueue(endedId, res.tracks);
         if (!newQueue.length) return;
-        originalQueueRef.current = [
-          ...originalQueueRef.current.filter(t => t.id !== endedId),
-          ...appended,
-        ];
         if (resume) {
           if (appended.length) playAt(newQueue, kept.length);
         } else {
@@ -146,6 +152,50 @@ export function PlayerProvider({ children }) {
       })
       .catch(() => {}); // offline: the local queue simply keeps the track
   }, [playAt]);
+
+  // Manual removal of a disliked track from the dynamic mix. When the mix is
+  // playing, the queue follows; removing the current track skips to the next.
+  // Returns the fresh server list so callers can update their own display.
+  const removeDynamicMixTrack = useCallback(async (trackId) => {
+    const res = await api.dynamicMixRemove(trackId);
+    if (dynamicMixRef.current) {
+      const q = queueRef.current;
+      const i = indexRef.current;
+      const wasCurrent = q[i]?.id === trackId;
+      const { newQueue } = syncDynamicQueue(trackId, res.tracks);
+      if (!newQueue.length) {
+        close();
+      } else if (wasCurrent) {
+        playAt(newQueue, Math.min(i, newQueue.length - 1));
+      } else {
+        const playingId = q[i]?.id;
+        const newIndex = Math.max(0, newQueue.findIndex(t => t.id === playingId));
+        queueRef.current = newQueue;
+        indexRef.current = newIndex;
+        setQueue(newQueue);
+        setIndex(newIndex);
+      }
+    }
+    return res.tracks;
+  }, [playAt]);
+
+  // Full refresh: the server draws a brand-new mix. When the mix is playing,
+  // the current track keeps playing and the new draw queues up behind it.
+  // Returns the fresh server list so callers can update their own display.
+  const refreshDynamicMix = useCallback(async () => {
+    const res = await api.dynamicMixRefresh();
+    if (dynamicMixRef.current) {
+      const fresh = (res.tracks || []).filter(t => t.has_file !== false);
+      const cur = queueRef.current[indexRef.current];
+      const newQueue = cur ? [cur, ...fresh.filter(t => t.id !== cur.id)] : fresh;
+      originalQueueRef.current = newQueue;
+      queueRef.current = newQueue;
+      indexRef.current = newQueue.length ? 0 : -1;
+      setQueue(newQueue);
+      setIndex(indexRef.current);
+    }
+    return res.tracks;
+  }, []);
 
   // tracks must be queue-shaped items ({id, title, album_id, artist_name, cover_url, ...})
   const playTracks = useCallback((tracks, startIndex = 0, { dynamic = false } = {}) => {
@@ -388,6 +438,7 @@ export function PlayerProvider({ children }) {
     queue, index, current, playing, currentTime, duration, volume, expanded,
     repeat, shuffle, dynamicMix,
     playTracks, playAlbum, playAlbumById, playDynamicMix,
+    removeDynamicMixTrack, refreshDynamicMix,
     toggle, next, prev, seek, setVolume, close, setExpanded, jumpTo,
     cycleRepeat, toggleShuffle, toggleFavorite,
   };

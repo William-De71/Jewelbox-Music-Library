@@ -466,3 +466,8 @@ body.player-open .btn-scroll-top {
     bottom: 132px !important;
   }
 }
+
+/* Spinning icon while the dynamic mix is being regenerated */
+.icon-spin {
+  animation: spinner-border 0.75s linear infinite;
+}
