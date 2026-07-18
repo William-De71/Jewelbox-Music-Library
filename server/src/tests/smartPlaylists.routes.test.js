@@ -155,6 +155,19 @@ describe('dynamic mix persistence', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('refresh draws a brand-new persistent mix', async () => {
+    const res = await app.inject({ method: 'POST', url: '/smart-playlists/dynamic_mix/refresh' });
+    expect(res.statusCode).toBe(200);
+    const { key, tracks } = res.json();
+    expect(key).toBe('dynamic_mix');
+    // Tiny library: the new draw still holds every playable track, none other.
+    expect(tracks.map(t => t.id).sort()).toEqual(
+      [ids.airbag, ids.paranoid, ids.neverPlayed].sort(),
+    );
+    // The new list is persisted, not redrawn on the next read.
+    expect(await getIds()).toEqual(tracks.map(t => t.id));
+  });
+
   it('drops tracks that lost their audio file and refills', async () => {
     const before = await getIds();
     const victim = before[0];

@@ -60,6 +60,13 @@ function getDynamicMixTracks(db) {
     .map(mapQueueTrack);
 }
 
+// Full reset: throw the whole list away and draw a brand-new random mix.
+export function refreshDynamicMix() {
+  const db = getDb();
+  db.prepare('DELETE FROM dynamic_mix_tracks').run();
+  return getDynamicMixTracks(db);
+}
+
 // A dynamic mix track was played through: remove it and top the list back up.
 export function consumeDynamicMixTrack(trackId) {
   const db = getDb();
