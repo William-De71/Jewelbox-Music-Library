@@ -4,7 +4,9 @@ import { getMusicLibraryPath } from '../db/settings.js';
 import { startScan, getScanStatus, matchManualFolder, isAudioFile } from '../utils/audioScanner.js';
 import {
   getAlbumById,
+  getAlbums,
   getTrackForStream,
+  searchTracks,
   setAlbumAudioFolder,
   setTrackFilePaths,
   markTrackPlayed,
@@ -74,6 +76,22 @@ export async function playerRoutes(fastify) {
       const result = setTrackFavorite(Number(req.params.id), req.body.is_favorite);
       if (!result) return reply.code(404).send({ error: 'Track not found' });
       return result;
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Library search for the app's search tab: album titles and artist names via
+  // getAlbums, track titles via searchTracks. Owned collection only, capped
+  // (30 albums / 100 tracks) instead of paginated.
+  fastify.get('/player/search', async (req, reply) => {
+    try {
+      const q = String(req.query.q || '').trim();
+      if (q.length < 2) {
+        return reply.code(400).send({ error: 'q must be at least 2 characters' });
+      }
+      const { data: albums } = getAlbums({ search: q, wanted: 'false', limit: 30, sort: 'artist' });
+      return { albums, tracks: searchTracks(q) };
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }

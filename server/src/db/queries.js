@@ -424,6 +424,21 @@ export function mapQueueTrack(row, i) {
   };
 }
 
+// Track-title search for the player's search screen: owned albums only,
+// capped rather than paginated — the client asks the user to refine instead.
+export function searchTracks(search, limit = 100) {
+  const rows = getDb().prepare(`
+    SELECT ${QUEUE_TRACK_FIELDS}
+    FROM tracks t
+    JOIN albums a ON a.id = t.album_id
+    JOIN artists ar ON ar.id = a.artist_id
+    WHERE t.title LIKE ? AND a.is_wanted = 0
+    ORDER BY ar.name COLLATE NOCASE, a.title COLLATE NOCASE, t.id
+    LIMIT ?
+  `).all(`%${search}%`, limit);
+  return rows.map(mapQueueTrack);
+}
+
 // ── Playlists ─────────────────────────────────────────────────────────────────
 
 // "3:45" -> 225, "1:02:03" -> 3723, anything else -> null
