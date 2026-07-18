@@ -85,4 +85,14 @@ export const SCHEMA = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_loan_history_album ON loan_history(album_id);
+
+  CREATE TABLE IF NOT EXISTS play_history (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_type TEXT NOT NULL CHECK(item_type IN ('album','playlist')),
+    item_id   INTEGER NOT NULL,
+    played_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(item_type, item_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_play_history_played_at ON play_history(played_at DESC);
 `;

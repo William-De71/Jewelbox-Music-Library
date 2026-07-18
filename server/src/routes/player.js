@@ -11,6 +11,9 @@ import {
   setTrackFilePaths,
   markTrackPlayed,
   setTrackFavorite,
+  recordPlay,
+  getRecentPlayedItems,
+  getSuggestedAlbums,
 } from '../db/queries.js';
 
 // Resolves a library-relative path and guarantees it stays inside the library root.
@@ -76,6 +79,40 @@ export async function playerRoutes(fastify) {
       const result = setTrackFavorite(Number(req.params.id), req.body.is_favorite);
       if (!result) return reply.code(404).send({ error: 'Track not found' });
       return result;
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Records that playback started from an album or playlist, feeding the
+  // "recently played" section of the app's home screen.
+  fastify.post('/player/history', async (req, reply) => {
+    try {
+      const { item_type, item_id } = req.body ?? {};
+      if (item_type !== 'album' && item_type !== 'playlist') {
+        return reply.code(400).send({ error: "item_type must be 'album' or 'playlist'" });
+      }
+      if (!Number.isInteger(item_id) || item_id <= 0) {
+        return reply.code(400).send({ error: 'item_id must be a positive integer' });
+      }
+      if (!recordPlay(item_type, item_id)) {
+        return reply.code(404).send({ error: `${item_type} not found` });
+      }
+      return reply.code(204).send();
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Home feed: the 8 last-played albums/playlists plus 12 suggested albums
+  // (weighted random, excluding whatever the recent section already shows).
+  fastify.get('/player/home', async (req, reply) => {
+    try {
+      const recent = getRecentPlayedItems(8);
+      const excludeIds = recent
+        .filter(e => e.item_type === 'album')
+        .map(e => e.album.id);
+      return { recent, suggestions: getSuggestedAlbums({ excludeIds, limit: 12 }) };
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }

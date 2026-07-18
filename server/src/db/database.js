@@ -78,6 +78,19 @@ function runMigrations(database) {
     `);
     console.log('[Migration] Created dynamic_mix_tracks table');
   }
+  if (!tables.includes('play_history')) {
+    database.exec(`
+      CREATE TABLE play_history (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_type TEXT NOT NULL CHECK(item_type IN ('album','playlist')),
+        item_id   INTEGER NOT NULL,
+        played_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(item_type, item_id)
+      );
+      CREATE INDEX idx_play_history_played_at ON play_history(played_at DESC);
+    `);
+    console.log('[Migration] Created play_history table');
+  }
   if (!tables.includes('loan_history')) {
     database.exec(`
       CREATE TABLE loan_history (
