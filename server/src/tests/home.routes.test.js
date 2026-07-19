@@ -15,6 +15,7 @@ vi.mock('../db/settings.js', () => ({
 import Fastify from 'fastify';
 import { playerRoutes } from '../routes/player.js';
 import { getDb } from '../db/database.js';
+import { drawSuggestedAlbums } from '../db/queries.js';
 
 let app;
 let testDb;
@@ -219,6 +220,20 @@ describe('GET /player/home', () => {
     expect(count).toBe(0);
   });
 
+  it('answers 500 when the database fails', async () => {
+    // The route's catch-all: a DB error must surface as 500 with its message,
+    // not crash the server or hang the app.
+    getDb.mockImplementationOnce(() => { throw new Error('database is locked'); });
+    const res = await getHome();
+    expect(res.statusCode).toBe(500);
+    expect(res.json().error).toBe('database is locked');
+
+    getDb.mockImplementationOnce(() => { throw new Error('disk I/O error'); });
+    const post = await postHistory('album', albumIds.rated5);
+    expect(post.statusCode).toBe(500);
+    expect(post.json().error).toBe('disk I/O error');
+  });
+
   it('keeps the same suggestions across calls within a day', async () => {
     // Enough candidates that a fresh draw would almost surely differ.
     const artistId = testDb.prepare('SELECT id FROM artists LIMIT 1').get().id;
@@ -254,6 +269,73 @@ describe('GET /player/home', () => {
     const body = (await getHome()).json();
     expect(body.suggestions.map(a => a.id)).not.toContain(target);
     expect(body.recent.some(e => e.album?.id === target)).toBe(true);
+  });
+
+  // The draw is random, so the recency weighting is asserted statistically:
+  // over many draws a recently played album must surface far less often than
+  // one never played. Each tier of recencyFactor gets its own album.
+  it('weights the draw against recently played albums', () => {
+    const artistId = testDb.prepare('SELECT id FROM artists LIMIT 1').get().id;
+    const insertAlbum = testDb.prepare('INSERT INTO albums (title, artist_id, rating) VALUES (?, ?, 3)');
+    const insertTrack = testDb.prepare(
+      'INSERT INTO tracks (album_id, position, title, file_path, last_played_at) VALUES (?, 1, ?, ?, ?)',
+    );
+    const daysAgo = (n) => {
+      const d = new Date(Date.now() - n * 86_400_000);
+      return d.toISOString().slice(0, 19).replace('T', ' ');
+    };
+
+    testDb.exec('DELETE FROM tracks; DELETE FROM albums;');
+    const tiers = {
+      never: null,
+      yesterday: daysAgo(1),      // factor 0.05
+      twoWeeks: daysAgo(14),      // factor 0.25
+      twoMonths: daysAgo(60),     // factor 0.6
+      longAgo: daysAgo(200),      // factor 1.0
+    };
+    const ids = {};
+    for (const [tier, playedAt] of Object.entries(tiers)) {
+      const id = insertAlbum.run(tier, artistId).lastInsertRowid;
+      insertTrack.run(id, `${tier} track`, `w/${tier}.mp3`, playedAt);
+      ids[tier] = id;
+    }
+
+    // One slot per draw: the weights decide which album wins it.
+    const wins = Object.fromEntries(Object.keys(tiers).map(t => [t, 0]));
+    const byId = Object.fromEntries(Object.entries(ids).map(([t, id]) => [id, t]));
+    for (let i = 0; i < 600; i++) {
+      const [top] = drawSuggestedAlbums({ limit: 1 });
+      wins[byId[top.id]]++;
+    }
+
+    // Ordering of the tiers, with slack for randomness.
+    expect(wins.never).toBeGreaterThan(wins.twoMonths);
+    expect(wins.twoMonths).toBeGreaterThan(wins.twoWeeks);
+    expect(wins.twoWeeks).toBeGreaterThan(wins.yesterday);
+    // A 20x weight gap must show up clearly, not marginally.
+    expect(wins.never).toBeGreaterThan(wins.yesterday * 3);
+    // "Never" and "long ago" share factor 1.0: neither should dominate.
+    expect(Math.abs(wins.never - wins.longAgo)).toBeLessThan(wins.never);
+  });
+
+  it('favours highly rated albums in the draw', () => {
+    const artistId = testDb.prepare('SELECT id FROM artists LIMIT 1').get().id;
+    testDb.exec('DELETE FROM tracks; DELETE FROM albums;');
+    const insertAlbum = testDb.prepare('INSERT INTO albums (title, artist_id, rating) VALUES (?, ?, ?)');
+    const insertTrack = testDb.prepare(
+      'INSERT INTO tracks (album_id, position, title, file_path) VALUES (?, 1, ?, ?)',
+    );
+    const five = insertAlbum.run('Five stars', artistId, 5).lastInsertRowid;
+    const one = insertAlbum.run('One star', artistId, 1).lastInsertRowid;
+    insertTrack.run(five, 'a', 'r/five.mp3');
+    insertTrack.run(one, 'b', 'r/one.mp3');
+
+    let fiveWins = 0;
+    for (let i = 0; i < 400; i++) {
+      if (drawSuggestedAlbums({ limit: 1 })[0].id === five) fiveWins++;
+    }
+    // Weight is rating²: 25 vs 1, so the 5-star album takes the slot nearly always.
+    expect(fiveWins).toBeGreaterThan(320);
   });
 
   it('suggestions exclude wanted, audio-less and recently shown albums', async () => {
