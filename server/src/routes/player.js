@@ -104,15 +104,19 @@ export async function playerRoutes(fastify) {
     }
   });
 
-  // Home feed: the 8 last-played albums/playlists plus 12 suggested albums
-  // (weighted random, excluding whatever the recent section already shows).
+  // Home feed: the 8 last-played albums/playlists plus the day's suggested
+  // albums (drawn once per day, see getSuggestedAlbums). Albums that entered the
+  // recent section after the draw are filtered out here so the two sections
+  // never show the same album twice.
   fastify.get('/player/home', async (req, reply) => {
     try {
       const recent = getRecentPlayedItems(8);
       const excludeIds = recent
         .filter(e => e.item_type === 'album')
         .map(e => e.album.id);
-      return { recent, suggestions: getSuggestedAlbums({ excludeIds, limit: 12 }) };
+      const suggestions = getSuggestedAlbums({ excludeIds, limit: 12 })
+        .filter(a => !excludeIds.includes(a.id));
+      return { recent, suggestions };
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }

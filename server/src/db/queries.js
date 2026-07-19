@@ -659,7 +659,7 @@ export function getRecentPlayedItems(limit = 8) {
 // Weighted random sample of playable albums: high ratings and albums not
 // listened to recently are favoured. Weighting is done in JS rather than SQL
 // so it doesn't depend on SQLite math functions being available.
-export function getSuggestedAlbums({ excludeIds = [], limit = 12 } = {}) {
+export function drawSuggestedAlbums({ excludeIds = [], limit = 12 } = {}) {
   const db = getDb();
   const notIn = excludeIds.length ? `AND a.id NOT IN (${excludeIds.map(() => '?').join(',')})` : '';
   const candidates = db.prepare(`
@@ -693,4 +693,28 @@ export function getSuggestedAlbums({ excludeIds = [], limit = 12 } = {}) {
   ).all(...sampled.map(s => s.id));
   const byId = new Map(rows.map(r => [r.id, mapAlbum(r)]));
   return sampled.map(s => byId.get(s.id)).filter(Boolean);
+}
+
+// The suggestions are meant to be a stable "what to listen to today", not a
+// reshuffle on every screen refresh: the drawn set is stored and reused until
+// the local day changes. Albums deleted meanwhile simply drop out (FK cascade).
+export function getSuggestedAlbums({ excludeIds = [], limit = 12 } = {}) {
+  const db = getDb();
+  const today = new Date().toLocaleDateString('sv-SE'); // local YYYY-MM-DD
+  const stored = db.prepare(`
+    ${ALBUM_SELECT}
+    JOIN suggested_albums s ON s.album_id = a.id
+    WHERE s.day = ?
+    ORDER BY s.position
+  `).all(today);
+
+  if (stored.length) return stored.map(mapAlbum);
+
+  const drawn = drawSuggestedAlbums({ excludeIds, limit });
+  db.transaction(() => {
+    db.prepare('DELETE FROM suggested_albums').run();
+    const insert = db.prepare('INSERT INTO suggested_albums (album_id, day, position) VALUES (?, ?, ?)');
+    drawn.forEach((album, i) => insert.run(album.id, today, i));
+  })();
+  return drawn;
 }

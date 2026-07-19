@@ -91,6 +91,17 @@ function runMigrations(database) {
     `);
     console.log('[Migration] Created play_history table');
   }
+  if (!tables.includes('suggested_albums')) {
+    database.exec(`
+      CREATE TABLE suggested_albums (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        album_id INTEGER NOT NULL UNIQUE REFERENCES albums(id) ON DELETE CASCADE,
+        day      TEXT NOT NULL,
+        position INTEGER NOT NULL
+      );
+    `);
+    console.log('[Migration] Created suggested_albums table');
+  }
   if (!tables.includes('loan_history')) {
     database.exec(`
       CREATE TABLE loan_history (
