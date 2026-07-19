@@ -499,7 +499,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 try {
   await fastify.listen({ port: PORT, host: HOST });
   console.log(`Server listening at http://${HOST}:${PORT}`);
-  advertise({ port: PORT, version: APP_VERSION, serverId: getServerId() });
+  await advertise({ port: PORT, version: APP_VERSION, serverId: getServerId() });
 } catch (err) {
   console.error('Error starting server:', err);
   process.exit(1);
