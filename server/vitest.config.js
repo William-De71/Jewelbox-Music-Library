@@ -23,6 +23,7 @@ export default defineConfig({
         'src/utils/audioMatch.js',
         'src/utils/fsBrowser.js',
         'src/utils/lastfm.js',
+        'src/utils/mdns.js',
       ],
       exclude: ['src/**/*.test.js'],
       // json-summary feeds the CI's coverage comment (.github/scripts/coverage_summary.py).

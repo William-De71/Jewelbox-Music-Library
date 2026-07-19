@@ -103,6 +103,41 @@ Les sessions autorisées avec une autre clé sont automatiquement invalidées : 
 
 ---
 
+## 📡 Découverte réseau (mDNS)
+
+Au démarrage, le serveur s'annonce sur le réseau local en Zeroconf sous le type
+`_jewelbox._tcp`. L'application mobile le trouve ainsi toute seule, sans avoir à
+saisir une adresse IP qui change à chaque bail DHCP.
+
+Vérifier l'annonce depuis une autre machine du réseau :
+
+```bash
+avahi-browse -rt _jewelbox._tcp        # Linux
+dns-sd -B _jewelbox._tcp               # macOS
+```
+
+L'enregistrement porte le port réel, ainsi que des champs TXT (`app`, `version`,
+`api`, `id`). Après résolution, un client confirme sa trouvaille via
+`GET /api/server-info`, qui renvoie notamment un `server_id` stable — généré au
+premier démarrage et conservé — permettant de reconnaître un serveur déjà appairé
+même si son adresse a changé.
+
+| Variable        | Défaut                  | Rôle                                    |
+|-----------------|-------------------------|-----------------------------------------|
+| `MDNS_ENABLED`  | `true`                  | `false` désactive complètement l'annonce |
+| `MDNS_NAME`     | `JewelBox (<hostname>)` | Nom affiché du service                   |
+
+Si le multicast est indisponible, l'annonce échoue sans bloquer le démarrage : le
+serveur reste joignable normalement par son adresse IP.
+
+> **⚠️ En Docker :** le multicast ne traverse pas le NAT du bridge par défaut.
+> L'annonce sera donc invisible depuis le réseau local avec la configuration
+> standard. Pour que la découverte fonctionne, utilisez `network_mode: host` dans
+> `docker-compose.yml` (en retirant la section `ports`, inutile dans ce mode).
+> Sinon, réglez `MDNS_ENABLED=false` pour éviter une annonce qui ne sert à rien.
+
+---
+
 ## 🐳 Docker
 
 ### Lancement avec Docker Compose (recommandé)
@@ -228,6 +263,7 @@ npm run test:coverage --workspace=server
 | `DELETE` | `/api/lastfm/session`        | Déconnecter le compte Last.fm            |
 | `POST`   | `/api/lastfm/nowplaying`     | Signaler la piste en cours               |
 | `POST`   | `/api/lastfm/scrobble`       | Scrobbler une écoute                     |
+| `GET`    | `/api/server-info`           | Identité du serveur (découverte mDNS)    |
 
 ### Paramètres de `GET /api/albums`
 

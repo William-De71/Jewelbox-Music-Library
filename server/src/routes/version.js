@@ -14,6 +14,8 @@ try {
   console.error('[Version] Failed to read version from package.json:', err);
 }
 
+export { version as APP_VERSION };
+
 export async function versionRoutes(fastify) {
   fastify.get('/api/version', async (req, reply) => {
     return {

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import { albumRoutes } from './routes/albums.js';
 import { searchRoutes } from './routes/search.js';
-import { versionRoutes } from './routes/version.js';
+import { versionRoutes, APP_VERSION } from './routes/version.js';
 import { playerRoutes } from './routes/player.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { lastfmRoutes, dropStaleSession } from './routes/lastfm.js';
@@ -16,6 +16,8 @@ import { isLastfmAvailable } from './utils/lastfmCredentials.js';
 import { getBrowseRoots, resolveInRoots, listDirectory, parentWithinRoots } from './utils/fsBrowser.js';
 import { smartPlaylistRoutes } from './routes/smartPlaylists.js';
 import { createDatabase, setActiveDatabase, deleteDatabase } from './db/manager.js';
+import { advertise, stopAdvertising, serviceName } from './utils/mdns.js';
+import { randomUUID } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -439,6 +441,40 @@ fastify.get('/api/database/active', async (req, reply) => {
   }
 });
 
+// Stable identity for this server, minted on first boot and kept in the manager
+// DB. The LAN address changes with every DHCP lease, so this is what lets a
+// client recognise a server it has already paired with after rediscovery.
+function getServerId() {
+  const db = getManagerDb();
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'server_id'").get();
+  if (row?.value) return row.value;
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO settings (key, value, updated_at) VALUES ('server_id', ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+  `).run(id);
+  return id;
+}
+
+// What a client fetches right after resolving the mDNS record, to confirm it
+// found a JewelBox and not some other service squatting the port.
+fastify.get('/api/server-info', async (req, reply) => {
+  try {
+    const db = getManagerDb();
+    const activeDb = db.prepare('SELECT name FROM databases WHERE is_active = 1 LIMIT 1').get();
+    return {
+      app: 'jewelbox',
+      name: serviceName(),
+      version: APP_VERSION,
+      server_id: getServerId(),
+      api: '/api',
+      collection: activeDb?.name ?? null,
+    };
+  } catch (err) {
+    return reply.code(500).send({ error: err.message });
+  }
+});
+
 // Health check
 fastify.get('/api/health', async (req, reply) => {
   return { status: 'ok' };
@@ -457,10 +493,27 @@ if (fs.existsSync(clientDist)) {
 }
 
 // Start server
+const PORT = parseInt(process.env.PORT) || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
+
 try {
-  await fastify.listen({ port: parseInt(process.env.PORT) || 3001, host: process.env.HOST || '0.0.0.0' });
-  console.log('Server listening at http://0.0.0.0:3001');
+  await fastify.listen({ port: PORT, host: HOST });
+  console.log(`Server listening at http://${HOST}:${PORT}`);
+  advertise({ port: PORT, version: APP_VERSION, serverId: getServerId() });
 } catch (err) {
   console.error('Error starting server:', err);
   process.exit(1);
+}
+
+// Withdraw the mDNS record on the way out, otherwise clients keep resolving a
+// dead address from their cache.
+let shuttingDown = false;
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    await stopAdvertising();
+    await fastify.close();
+    process.exit(0);
+  });
 }
