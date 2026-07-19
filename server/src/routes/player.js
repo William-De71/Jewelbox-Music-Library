@@ -14,6 +14,15 @@ import {
   recordPlay,
   getRecentPlayedItems,
   getSuggestedAlbums,
+  getQueue,
+  saveQueue,
+  updateQueueState,
+  appendToQueue,
+  removeFromQueue,
+  clearQueue,
+  listQueueDevices,
+  getTrackIdsForAlbum,
+  trackExists,
 } from '../db/queries.js';
 
 // Resolves a library-relative path and guarantees it stays inside the library root.
@@ -21,6 +30,40 @@ function resolveInLibrary(libRoot, relPath) {
   const abs = path.resolve(libRoot, relPath || '.');
   if (abs !== libRoot && !abs.startsWith(libRoot + path.sep)) return null;
   return abs;
+}
+
+// Queues are scoped to a device, not a user: there are no accounts, and the
+// point is to keep the web player and the phone from overwriting each other.
+// Returns null after answering 400 when the header is missing.
+function requireDeviceId(req, reply) {
+  const id = String(req.headers['x-device-id'] || '').trim();
+  if (!id || id.length > 64) {
+    reply.code(400).send({ error: 'X-Device-Id header is required' });
+    return null;
+  }
+  return id;
+}
+
+// Resolves {track_id} or {album_id} to a list of track ids, or answers an error.
+function resolveTrackIds(body, reply) {
+  const { track_id, album_id } = body || {};
+  if (track_id != null) {
+    if (!trackExists(Number(track_id))) {
+      reply.code(404).send({ error: 'Track not found' });
+      return null;
+    }
+    return [Number(track_id)];
+  }
+  if (album_id != null) {
+    const ids = getTrackIdsForAlbum(Number(album_id));
+    if (ids.length === 0) {
+      reply.code(404).send({ error: 'Album not found or has no tracks' });
+      return null;
+    }
+    return ids;
+  }
+  reply.code(400).send({ error: 'track_id or album_id is required' });
+  return null;
 }
 
 export async function playerRoutes(fastify) {
@@ -99,6 +142,120 @@ export async function playerRoutes(fastify) {
         return reply.code(404).send({ error: `${item_type} not found` });
       }
       return reply.code(204).send();
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // ── Playback queue ─────────────────────────────────────────────────────────
+
+  fastify.get('/player/queue', async (req, reply) => {
+    try {
+      const device = requireDeviceId(req, reply);
+      if (!device) return reply;
+      return getQueue(device);
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Full replacement, sent when playback starts from an album or a playlist.
+  fastify.put('/player/queue', async (req, reply) => {
+    try {
+      const device = requireDeviceId(req, reply);
+      if (!device) return reply;
+
+      const { track_ids, current_index, position_sec, device_label } = req.body ?? {};
+      if (!Array.isArray(track_ids)) {
+        return reply.code(400).send({ error: 'track_ids array is required' });
+      }
+      if (track_ids.some(id => !Number.isInteger(id) || id <= 0)) {
+        return reply.code(400).send({ error: 'track_ids must be positive integers' });
+      }
+      return saveQueue(device, track_ids, {
+        currentIndex: Number.isInteger(current_index) ? current_index : -1,
+        positionSec: Number.isFinite(position_sec) ? position_sec : 0,
+        label: device_label ? String(device_label).slice(0, 64) : null,
+      });
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Lightweight progress ping. The client throttles this: writing on every
+  // timeupdate (~4 Hz) would hammer SQLite for no benefit.
+  fastify.patch('/player/queue/state', async (req, reply) => {
+    try {
+      const device = requireDeviceId(req, reply);
+      if (!device) return reply;
+
+      const { current_index, position_sec } = req.body ?? {};
+      if (current_index != null && !Number.isInteger(current_index)) {
+        return reply.code(400).send({ error: 'current_index must be an integer' });
+      }
+      if (position_sec != null && !Number.isFinite(position_sec)) {
+        return reply.code(400).send({ error: 'position_sec must be a number' });
+      }
+      updateQueueState(device, { currentIndex: current_index, positionSec: position_sec });
+      return reply.code(204).send();
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Append ({track_id} or {album_id}), or insert right after {after_index}
+  // for "play next".
+  fastify.post('/player/queue/tracks', async (req, reply) => {
+    try {
+      const device = requireDeviceId(req, reply);
+      if (!device) return reply;
+
+      const { after_index } = req.body ?? {};
+      if (after_index != null && (!Number.isInteger(after_index) || after_index < 0)) {
+        return reply.code(400).send({ error: 'after_index must be a non-negative integer' });
+      }
+      const trackIds = resolveTrackIds(req.body, reply);
+      if (!trackIds) return reply;
+
+      return appendToQueue(device, trackIds, { afterIndex: after_index });
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  fastify.delete('/player/queue/tracks/:entryId', async (req, reply) => {
+    try {
+      const device = requireDeviceId(req, reply);
+      if (!device) return reply;
+
+      if (!removeFromQueue(device, Number(req.params.entryId))) {
+        return reply.code(404).send({ error: 'Queue entry not found' });
+      }
+      return getQueue(device);
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  fastify.delete('/player/queue', async (req, reply) => {
+    try {
+      const device = requireDeviceId(req, reply);
+      if (!device) return reply;
+
+      clearQueue(device);
+      return reply.code(204).send();
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Queues left on other devices, so the phone can pick up what the desktop
+  // was playing.
+  fastify.get('/player/queue/devices', async (req, reply) => {
+    try {
+      const device = requireDeviceId(req, reply);
+      if (!device) return reply;
+      return { data: listQueueDevices(device) };
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }

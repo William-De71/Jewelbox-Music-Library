@@ -1,9 +1,15 @@
+import { getDeviceId } from '../utils/deviceId.js';
+
 const BASE = '/api';
 
 async function request(method, path, body) {
   const opts = {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers: {
+      // Scopes the playback queue to this browser; harmless on other routes.
+      'X-Device-Id': getDeviceId(),
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
   };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(`${BASE}${path}`, opts);
@@ -100,6 +106,22 @@ export const api = {
   trackStreamUrl: (id) => `${BASE}/player/tracks/${id}/stream`,
   trackPlayed: (id) => request('POST', `/player/tracks/${id}/played`),
   setTrackFavorite: (id, is_favorite) => request('PATCH', `/player/tracks/${id}/favorite`, { is_favorite }),
+
+  // Playback queue (server-persisted, per device)
+  getQueue: () => request('GET', '/player/queue'),
+  saveQueue: (track_ids, { currentIndex, positionSec, label } = {}) =>
+    request('PUT', '/player/queue', {
+      track_ids,
+      current_index: currentIndex,
+      position_sec: positionSec,
+      device_label: label,
+    }),
+  updateQueueState: (currentIndex, positionSec) =>
+    request('PATCH', '/player/queue/state', { current_index: currentIndex, position_sec: positionSec }),
+  queueAdd: (payload) => request('POST', '/player/queue/tracks', payload),
+  queueRemove: (entryId) => request('DELETE', `/player/queue/tracks/${entryId}`),
+  queueClear: () => request('DELETE', '/player/queue'),
+  queueDevices: () => request('GET', '/player/queue/devices'),
 
   // Smart playlists
   getSmartPlaylists: () => request('GET', '/smart-playlists'),

@@ -102,4 +102,22 @@ export const SCHEMA = `
     day      TEXT NOT NULL,
     position INTEGER NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS player_queue (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id  TEXT NOT NULL,
+    track_id   INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    position   INTEGER NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_player_queue_device ON player_queue(device_id, position);
+
+  CREATE TABLE IF NOT EXISTS player_queue_state (
+    device_id     TEXT PRIMARY KEY,
+    device_label  TEXT,
+    current_index INTEGER NOT NULL DEFAULT -1,
+    position_sec  REAL NOT NULL DEFAULT 0,
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `;

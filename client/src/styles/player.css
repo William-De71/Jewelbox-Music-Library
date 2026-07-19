@@ -273,6 +273,8 @@ body.player-open .btn-scroll-top {
 }
 
 .player-view-queue-header {
+  display: flex;
+  align-items: center;
   width: 100%;
   border-top: 1px solid var(--tblr-border-color);
   padding-top: 0.5rem;
@@ -313,6 +315,51 @@ body.player-open .btn-scroll-top {
   min-width: 1.5rem;
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Queue rows carry a drag handle and a remove button around the main button */
+.player-view-queue li {
+  display: flex;
+  align-items: center;
+}
+
+.player-view-queue-grip {
+  display: flex;
+  align-items: center;
+  padding: 0 0.125rem;
+  cursor: grab;
+  opacity: 0;
+}
+
+.player-view-queue li:hover .player-view-queue-grip,
+.player-view-queue li:focus-within .player-view-queue-grip {
+  opacity: 1;
+}
+
+.player-view-queue li.dragging {
+  opacity: 0.5;
+}
+
+.player-view-queue li.drop-target {
+  box-shadow: inset 0 2px 0 0 var(--jewelbox-primary);
+}
+
+.player-view-queue-remove {
+  flex: none;
+  opacity: 0;
+}
+
+.player-view-queue li:hover .player-view-queue-remove,
+.player-view-queue li:focus-within .player-view-queue-remove {
+  opacity: 1;
+}
+
+/* Touch screens have no hover: keep the controls permanently visible */
+@media (hover: none) {
+  .player-view-queue-grip,
+  .player-view-queue-remove {
+    opacity: 1;
+  }
 }
 
 @media (max-width: 768px) {

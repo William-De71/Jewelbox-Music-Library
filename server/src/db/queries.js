@@ -563,6 +563,161 @@ export function trackExists(trackId) {
   return Boolean(getDb().prepare('SELECT 1 FROM tracks WHERE id = ?').get(trackId));
 }
 
+// ── Playback queue ────────────────────────────────────────────────────────────
+// One queue per device (no accounts here, and the point is to tell the web
+// client apart from the phone rather than one user from another). Entries live
+// in player_queue, playback position in player_queue_state — the queue changes
+// on reorder, the position on every track.
+
+// Renumbers positions to 1..n after an insert or a removal.
+function resequenceQueue(db, deviceId) {
+  const ids = db
+    .prepare('SELECT id FROM player_queue WHERE device_id = ? ORDER BY position, id')
+    .all(deviceId)
+    .map(r => r.id);
+  const update = db.prepare('UPDATE player_queue SET position = ? WHERE id = ?');
+  ids.forEach((id, i) => update.run(i + 1, id));
+  return ids.length;
+}
+
+function touchQueueState(db, deviceId, { currentIndex, positionSec, label } = {}) {
+  db.prepare(`
+    INSERT INTO player_queue_state (device_id, device_label, current_index, position_sec, updated_at)
+    VALUES (?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(device_id) DO UPDATE SET
+      device_label  = COALESCE(excluded.device_label, player_queue_state.device_label),
+      current_index = COALESCE(?, player_queue_state.current_index),
+      position_sec  = COALESCE(?, player_queue_state.position_sec),
+      updated_at    = datetime('now')
+  `).run(
+    deviceId,
+    label ?? null,
+    currentIndex ?? -1,
+    positionSec ?? 0,
+    currentIndex ?? null,
+    positionSec ?? null,
+  );
+}
+
+// Entries carry their queue row id as entry_id so the client can remove a
+// specific occurrence — the same track may legitimately appear twice.
+export function getQueue(deviceId) {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT q.id AS entry_id, ${QUEUE_TRACK_FIELDS}
+    FROM player_queue q
+    JOIN tracks t ON t.id = q.track_id
+    JOIN albums a ON a.id = t.album_id
+    JOIN artists ar ON ar.id = a.artist_id
+    WHERE q.device_id = ?
+    ORDER BY q.position, q.id
+  `).all(deviceId);
+  const state = db
+    .prepare('SELECT device_label, current_index, position_sec, updated_at FROM player_queue_state WHERE device_id = ?')
+    .get(deviceId);
+
+  return {
+    device_id: deviceId,
+    device_label: state?.device_label ?? null,
+    current_index: state?.current_index ?? -1,
+    position_sec: state?.position_sec ?? 0,
+    updated_at: state?.updated_at ?? null,
+    tracks: rows.map((row, i) => ({ entry_id: row.entry_id, ...mapQueueTrack(row, i) })),
+  };
+}
+
+// Full replacement: what the client sends when playback starts from an album,
+// a playlist or a shuffle toggle. Unknown track ids are dropped silently.
+export function saveQueue(deviceId, trackIds, { currentIndex, positionSec, label } = {}) {
+  const db = getDb();
+  const insert = db.prepare('INSERT INTO player_queue (device_id, track_id, position) VALUES (?, ?, ?)');
+  const exists = db.prepare('SELECT 1 FROM tracks WHERE id = ?');
+  db.transaction(() => {
+    db.prepare('DELETE FROM player_queue WHERE device_id = ?').run(deviceId);
+    let position = 0;
+    for (const trackId of trackIds) {
+      if (exists.get(trackId)) insert.run(deviceId, trackId, ++position);
+    }
+    touchQueueState(db, deviceId, { currentIndex, positionSec, label });
+  })();
+  return getQueue(deviceId);
+}
+
+export function updateQueueState(deviceId, { currentIndex, positionSec } = {}) {
+  const db = getDb();
+  touchQueueState(db, deviceId, { currentIndex, positionSec });
+  return true;
+}
+
+// afterIndex omitted -> append ("add to queue"); afterIndex given -> insert
+// right after that 0-based position ("play next"), shifting the rest down.
+export function appendToQueue(deviceId, trackIds, { afterIndex } = {}) {
+  const db = getDb();
+  const insert = db.prepare('INSERT INTO player_queue (device_id, track_id, position) VALUES (?, ?, ?)');
+  const exists = db.prepare('SELECT 1 FROM tracks WHERE id = ?');
+  db.transaction(() => {
+    const known = trackIds.filter(id => exists.get(id));
+    if (Number.isInteger(afterIndex) && afterIndex >= 0) {
+      // Fractional positions slot the new rows between existing ones; the
+      // resequence right after turns them back into clean integers.
+      let offset = 1;
+      for (const trackId of known) {
+        insert.run(deviceId, trackId, afterIndex + 1 + offset / (known.length + 1));
+        offset++;
+      }
+    } else {
+      let position = db
+        .prepare('SELECT COALESCE(MAX(position), 0) AS max FROM player_queue WHERE device_id = ?')
+        .get(deviceId).max;
+      for (const trackId of known) insert.run(deviceId, trackId, ++position);
+    }
+    resequenceQueue(db, deviceId);
+    touchQueueState(db, deviceId, {});
+  })();
+  return getQueue(deviceId);
+}
+
+export function removeFromQueue(deviceId, entryId) {
+  const db = getDb();
+  let removed = false;
+  db.transaction(() => {
+    const { changes } = db
+      .prepare('DELETE FROM player_queue WHERE id = ? AND device_id = ?')
+      .run(entryId, deviceId);
+    removed = changes > 0;
+    if (removed) {
+      resequenceQueue(db, deviceId);
+      touchQueueState(db, deviceId, {});
+    }
+  })();
+  return removed;
+}
+
+export function clearQueue(deviceId) {
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare('DELETE FROM player_queue WHERE device_id = ?').run(deviceId);
+    touchQueueState(db, deviceId, { currentIndex: -1, positionSec: 0 });
+  })();
+  return true;
+}
+
+// Other devices with a non-empty queue, for "resume from another device".
+export function listQueueDevices(excludeDeviceId = null) {
+  return getDb().prepare(`
+    SELECT q.device_id,
+           s.device_label,
+           s.current_index,
+           s.updated_at,
+           COUNT(q.id) AS track_count
+    FROM player_queue q
+    LEFT JOIN player_queue_state s ON s.device_id = q.device_id
+    WHERE q.device_id IS NOT ?
+    GROUP BY q.device_id
+    ORDER BY s.updated_at DESC
+  `).all(excludeDeviceId);
+}
+
 // ── Loan History ──────────────────────────────────────────────────────────────
 
 export function getLoanHistory(albumId) {

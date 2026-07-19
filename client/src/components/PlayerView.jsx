@@ -1,18 +1,44 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { useI18n } from '../config/i18n/index.jsx';
 import { usePlayer } from './PlayerContext.jsx';
 import { formatTime } from '../utils/formatTime.js';
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, X, Disc, ChevronDown, ListMusic,
-  Shuffle, Repeat, Repeat1, Heart, Infinity as InfinityIcon,
+  Shuffle, Repeat, Repeat1, Heart, Infinity as InfinityIcon, GripVertical, Trash2,
 } from 'lucide-preact';
+
+// "3:45" -> 225; anything unparseable contributes nothing to the total.
+function durationToSeconds(text) {
+  if (!text) return 0;
+  const parts = String(text).trim().split(':').map(Number);
+  if (parts.some(p => !Number.isFinite(p) || p < 0)) return 0;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return 0;
+}
 
 export function PlayerView({ navigate }) {
   const { t } = useI18n();
   const {
     queue, index, current, playing, currentTime, duration, volume, expanded, repeat, shuffle, dynamicMix,
     toggle, next, prev, seek, setVolume, close, setExpanded, jumpTo, cycleRepeat, toggleShuffle, toggleFavorite,
+    removeFromQueue, moveInQueue, clearQueue,
   } = usePlayer();
+
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dropIndex, setDropIndex] = useState(null);
+
+  // Time left in the queue, current track included.
+  const remaining = queue
+    .slice(Math.max(index, 0))
+    .reduce((sum, track) => sum + durationToSeconds(track.duration), 0)
+    - (index >= 0 ? Math.min(currentTime, durationToSeconds(current?.duration) || currentTime) : 0);
+
+  const onDrop = (to) => {
+    if (dragIndex != null && dragIndex !== to) moveInQueue(dragIndex, to);
+    setDragIndex(null);
+    setDropIndex(null);
+  };
 
   const repeatTitle = repeat === 'one' ? t('player.repeatOne') : repeat === 'all' ? t('player.repeatAll') : t('player.repeatOff');
 
@@ -154,19 +180,53 @@ export function PlayerView({ navigate }) {
               <InfinityIcon size={12} class="me-1" />{t('player.dynamicMix')}
             </span>
           )}
+          {remaining > 0 && (
+            <span class="ms-2 font-monospace">{t('player.remaining', { time: formatTime(remaining) })}</span>
+          )}
+          <button
+            class="btn btn-icon btn-ghost-secondary btn-sm ms-auto"
+            onClick={clearQueue}
+            title={t('player.clearQueue')}
+            aria-label={t('player.clearQueue')}
+          >
+            <Trash2 size={16} />
+          </button>
         </div>
         <ol class="player-view-queue list-unstyled">
           {queue.map((track, i) => (
             <li
-              key={`${track.id}-${i}`}
+              key={`${track.entry_id ?? track.id}-${i}`}
               ref={i === index ? activeItemRef : undefined}
-              class={i === index ? 'active' : ''}
+              class={[
+                i === index ? 'active' : '',
+                dragIndex === i ? 'dragging' : '',
+                dropIndex === i && dragIndex !== i ? 'drop-target' : '',
+              ].filter(Boolean).join(' ')}
+              draggable={!dynamicMix}
+              onDragStart={() => setDragIndex(i)}
+              onDragOver={(e) => { e.preventDefault(); setDropIndex(i); }}
+              onDragEnd={() => { setDragIndex(null); setDropIndex(null); }}
+              onDrop={(e) => { e.preventDefault(); onDrop(i); }}
             >
+              {!dynamicMix && (
+                <span class="player-view-queue-grip text-muted" aria-hidden="true">
+                  <GripVertical size={14} />
+                </span>
+              )}
               <button type="button" class="player-view-queue-item" onClick={() => jumpTo(i)}>
                 <span class="player-view-queue-num text-muted">{i + 1}</span>
                 <span class="text-truncate">{track.title}</span>
                 <span class="text-muted small text-truncate d-none d-sm-inline">{track.artist_name}</span>
                 <span class="text-muted small font-monospace ms-auto">{track.duration || ''}</span>
+              </button>
+              <button
+                type="button"
+                class="btn btn-icon btn-ghost-secondary btn-sm player-view-queue-remove"
+                onClick={() => removeFromQueue(i)}
+                title={t('player.removeFromQueue')}
+                aria-label={t('player.removeFromQueue')}
+              >
+                <X size={14} />
               </button>
             </li>
           ))}

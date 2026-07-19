@@ -102,6 +102,26 @@ function runMigrations(database) {
     `);
     console.log('[Migration] Created suggested_albums table');
   }
+  if (!tables.includes('player_queue')) {
+    database.exec(`
+      CREATE TABLE player_queue (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id  TEXT NOT NULL,
+        track_id   INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+        position   INTEGER NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_player_queue_device ON player_queue(device_id, position);
+      CREATE TABLE player_queue_state (
+        device_id     TEXT PRIMARY KEY,
+        device_label  TEXT,
+        current_index INTEGER NOT NULL DEFAULT -1,
+        position_sec  REAL NOT NULL DEFAULT 0,
+        updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    console.log('[Migration] Created player_queue tables');
+  }
   if (!tables.includes('loan_history')) {
     database.exec(`
       CREATE TABLE loan_history (

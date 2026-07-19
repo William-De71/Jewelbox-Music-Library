@@ -1,10 +1,13 @@
 import { createContext } from 'preact';
 import { useState, useEffect, useRef, useContext, useCallback } from 'preact/hooks';
 import { api } from '../api/client.js';
+import { getDeviceLabel } from '../utils/deviceId.js';
 
 const PlayerContext = createContext(null);
 
-function buildQueue(album) {
+// Turns an album payload into queue-shaped items. Exported so callers can feed
+// addToQueue/playNext without duplicating the mapping.
+export function buildQueue(album) {
   return (album.tracks || [])
     .filter(t => t.has_file)
     .map(t => ({
@@ -71,6 +74,44 @@ export function PlayerProvider({ children }) {
   }
 
   const current = index >= 0 ? queue[index] ?? null : null;
+
+  // Server sync. Every write is best-effort: losing the server must never take
+  // playback down with it, so failures are swallowed like toggleFavorite does.
+  const restoredRef = useRef(false); // guards against saving before restore ran
+  const lastStateWriteRef = useRef(0);
+
+  const pushQueue = useCallback((tracks, currentIndex) => {
+    if (!restoredRef.current) return;
+    api.saveQueue(tracks.map(t => t.id), {
+      currentIndex,
+      positionSec: 0,
+      label: getDeviceLabel(),
+    }).catch(() => {});
+  }, []);
+
+  // Throttled: 'timeupdate' fires ~4x/second and would hammer SQLite.
+  const pushState = useCallback((currentIndex, positionSec, { force = false } = {}) => {
+    if (!restoredRef.current) return;
+    const now = Date.now();
+    if (!force && now - lastStateWriteRef.current < 10000) return;
+    lastStateWriteRef.current = now;
+    api.updateQueueState(currentIndex, positionSec).catch(() => {});
+  }, []);
+
+  // Applies a new queue locally, keeping the pre-shuffle order in sync so that
+  // turning shuffle off later cannot resurrect tracks the user removed.
+  const applyQueue = useCallback((newQueue, newIndex, { syncOriginal = true } = {}) => {
+    if (syncOriginal) {
+      const ids = new Set(newQueue.map(t => t.id));
+      const kept = originalQueueRef.current.filter(t => ids.has(t.id));
+      const knownIds = new Set(kept.map(t => t.id));
+      originalQueueRef.current = [...kept, ...newQueue.filter(t => !knownIds.has(t.id))];
+    }
+    queueRef.current = newQueue;
+    indexRef.current = newIndex;
+    setQueue(newQueue);
+    setIndex(newIndex);
+  }, []);
 
   const playAt = useCallback((newQueue, newIndex) => {
     const audio = audioRef.current;
@@ -212,7 +253,8 @@ export function PlayerProvider({ children }) {
       newIndex = 0;
     }
     playAt(newQueue, newIndex);
-  }, [playAt]);
+    pushQueue(newQueue, newIndex);
+  }, [playAt, pushQueue]);
 
   const playDynamicMix = useCallback(async () => {
     const res = await api.getSmartPlaylist('dynamic_mix');
@@ -315,6 +357,73 @@ export function PlayerProvider({ children }) {
     return api.setTrackFavorite(trackId, isFavorite).catch(() => apply(!isFavorite));
   }, []);
 
+  // ── Queue editing ───────────────────────────────────────────────────────────
+  // All of these apply locally first, then tell the server. Track objects must
+  // be queue-shaped ({id, title, album_id, artist_name, cover_url, ...}).
+
+  // Appends at the end of the queue.
+  const addToQueue = useCallback((tracks) => {
+    const additions = (Array.isArray(tracks) ? tracks : [tracks]).filter(t => t?.has_file !== false);
+    if (!additions.length) return;
+    const newQueue = [...queueRef.current, ...additions];
+    applyQueue(newQueue, indexRef.current);
+    pushQueue(newQueue, indexRef.current);
+  }, [applyQueue, pushQueue]);
+
+  // Inserts right behind the current track.
+  const playNext = useCallback((tracks) => {
+    const additions = (Array.isArray(tracks) ? tracks : [tracks]).filter(t => t?.has_file !== false);
+    if (!additions.length) return;
+    const q = queueRef.current;
+    const i = indexRef.current;
+    const at = i < 0 ? q.length : i + 1;
+    const newQueue = [...q.slice(0, at), ...additions, ...q.slice(at)];
+    applyQueue(newQueue, i);
+    pushQueue(newQueue, i);
+  }, [applyQueue, pushQueue]);
+
+  // Removing the playing track skips to whatever takes its place.
+  const removeFromQueue = useCallback((position) => {
+    const q = queueRef.current;
+    const i = indexRef.current;
+    if (position < 0 || position >= q.length) return;
+
+    const newQueue = q.filter((_, k) => k !== position);
+    if (!newQueue.length) return close();
+
+    if (position === i) {
+      const nextIndex = Math.min(i, newQueue.length - 1);
+      applyQueue(newQueue, nextIndex);
+      playAt(newQueue, nextIndex);
+    } else {
+      applyQueue(newQueue, position < i ? i - 1 : i);
+    }
+    pushQueue(newQueue, indexRef.current);
+  }, [applyQueue, playAt, pushQueue]);
+
+  // Drag & drop reordering; the playing track keeps playing.
+  const moveInQueue = useCallback((from, to) => {
+    const q = queueRef.current;
+    if (from === to || from < 0 || to < 0 || from >= q.length || to >= q.length) return;
+
+    const i = indexRef.current;
+    const playing = i >= 0 ? q[i] : null;
+    const newQueue = [...q];
+    const [moved] = newQueue.splice(from, 1);
+    newQueue.splice(to, 0, moved);
+    // Track the playing entry by object identity: duplicate ids are legal in a
+    // queue, so indexOf on the id would follow the wrong copy.
+    const newIndex = playing ? newQueue.indexOf(playing) : -1;
+
+    applyQueue(newQueue, newIndex);
+    pushQueue(newQueue, indexRef.current);
+  }, [applyQueue, pushQueue]);
+
+  const clearQueue = useCallback(() => {
+    close();
+    api.queueClear().catch(() => {});
+  }, []);
+
   const setVolume = useCallback((v) => {
     const clamped = Math.min(1, Math.max(0, v));
     setVolumeState(clamped);
@@ -343,6 +452,61 @@ export function PlayerProvider({ children }) {
     const audio = audioRef.current;
     if (audio) audio.volume = volume;
   }, [volume]);
+
+  // Restore the queue this device left behind. Deliberately does not call
+  // playAt: browsers block autoplay anyway, and resuming audio on page load
+  // without a gesture would be obnoxious. The track is armed, paused, at the
+  // saved offset — pressing play picks up where it stopped.
+  useEffect(() => {
+    let cancelled = false;
+    api.getQueue()
+      .then((saved) => {
+        if (cancelled) return;
+        const tracks = (saved?.tracks || []).filter(t => t.has_file !== false);
+        if (!tracks.length) return;
+
+        const i = saved.current_index >= 0 && saved.current_index < tracks.length
+          ? saved.current_index
+          : 0;
+        originalQueueRef.current = tracks;
+        queueRef.current = tracks;
+        indexRef.current = i;
+        setQueue(tracks);
+        setIndex(i);
+
+        const audio = audioRef.current;
+        if (audio) {
+          audio.src = api.trackStreamUrl(tracks[i].id);
+          const offset = Number(saved.position_sec) || 0;
+          if (offset > 0) {
+            const seekOnce = () => {
+              audio.currentTime = offset;
+              audio.removeEventListener('loadedmetadata', seekOnce);
+            };
+            audio.addEventListener('loadedmetadata', seekOnce);
+          }
+        }
+      })
+      .catch(() => {}) // offline or no server: start with an empty player
+      .finally(() => { restoredRef.current = true; });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Persist progress: on every track change, and throttled while playing.
+  useEffect(() => {
+    if (index < 0) return;
+    pushState(index, currentTime, { force: true });
+  }, [index, pushState]);
+
+  useEffect(() => {
+    if (index < 0 || !playing) return;
+    pushState(index, currentTime);
+  }, [currentTime, index, playing, pushState]);
+
+  useEffect(() => {
+    if (index < 0 || playing) return;
+    pushState(index, currentTime, { force: true }); // pause: checkpoint now
+  }, [playing, pushState]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -441,6 +605,7 @@ export function PlayerProvider({ children }) {
     removeDynamicMixTrack, refreshDynamicMix,
     toggle, next, prev, seek, setVolume, close, setExpanded, jumpTo,
     cycleRepeat, toggleShuffle, toggleFavorite,
+    addToQueue, playNext, removeFromQueue, moveInQueue, clearQueue,
   };
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
