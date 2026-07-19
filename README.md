@@ -80,6 +80,14 @@ Ajoutez l'entrée correspondante dans `/etc/fstab` pour un montage permanent. En
 
 Créez des listes de lecture depuis le menu **Playlists** : ajoutez une piste ou un album entier depuis la fiche album (bouton « Ajouter à une playlist »), réordonnez les pistes, renommez, supprimez, et lancez la lecture complète. Les playlists survivent aux modifications d'albums.
 
+### File d'attente
+
+Ouvrez le lecteur plein écran (touchez la zone titre/pochette de la barre de lecture) pour voir la file en cours : réordonnez les pistes par glisser-déposer, retirez-en d'une croix, ou videz la file entière. Depuis une fiche album, **Lire ensuite** insère juste après la piste courante, **Ajouter à la file** place en fin — au niveau de l'album entier comme d'une piste isolée.
+
+La file est enregistrée sur le serveur : elle est restaurée au rechargement de la page, avec la piste et la position exactes (en pause — les navigateurs interdisent de relancer le son sans action de votre part).
+
+Chaque appareil possède sa propre file, identifiée par un jeton local : le navigateur du bureau et le téléphone ne s'écrasent donc jamais l'un l'autre. `GET /api/player/queue/devices` liste les files laissées par les autres appareils, de quoi reprendre sur le téléphone ce que le bureau écoutait.
+
 ### Scrobbling Last.fm
 
 Aucune configuration : rendez-vous dans **Paramètres → Last.fm**, cliquez sur « Connecter mon compte Last.fm » et autorisez l'application sur last.fm — c'est tout.
@@ -224,6 +232,13 @@ npm run test:coverage --workspace=server
 | `POST`   | `/api/playlists/:id/tracks`  | Ajouter une piste ou un album            |
 | `PUT`    | `/api/playlists/:id/tracks`  | Réordonner les pistes                    |
 | `DELETE` | `/api/playlists/:id/tracks/:entryId` | Retirer une piste                |
+| `GET`    | `/api/player/queue`          | File d'attente de l'appareil courant     |
+| `PUT`    | `/api/player/queue`          | Remplacer la file                        |
+| `PATCH`  | `/api/player/queue/state`    | Position de lecture (piste + secondes)   |
+| `POST`   | `/api/player/queue/tracks`   | Ajouter à la file / lire ensuite         |
+| `DELETE` | `/api/player/queue/tracks/:entryId` | Retirer une entrée de la file     |
+| `DELETE` | `/api/player/queue`          | Vider la file                            |
+| `GET`    | `/api/player/queue/devices`  | Files laissées par les autres appareils  |
 | `GET`    | `/api/lastfm/connect`        | URL d'autorisation Last.fm               |
 | `DELETE` | `/api/lastfm/session`        | Déconnecter le compte Last.fm            |
 | `POST`   | `/api/lastfm/nowplaying`     | Signaler la piste en cours               |

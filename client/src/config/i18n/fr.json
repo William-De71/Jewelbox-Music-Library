@@ -405,7 +405,14 @@
     "repeatOne": "Répéter la piste",
     "favorite": "Ajouter aux favoris",
     "unfavorite": "Retirer des favoris",
-    "dynamicMix": "Mix dynamique"
+    "dynamicMix": "Mix dynamique",
+    "remaining": "{time} restant",
+    "clearQueue": "Vider la file",
+    "removeFromQueue": "Retirer de la file",
+    "addToQueue": "Ajouter à la file",
+    "playNext": "Lire ensuite",
+    "queuedTrack": "Piste ajoutée à la file",
+    "queuedAlbum": "Album ajouté à la file"
   },
   "musicLibrary": {
     "title": "Bibliothèque musicale",

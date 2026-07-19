@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'preact/hooks';
 import { api } from '../api/client.js';
 import { StarRating } from '../components/StarRating.jsx';
-import { usePlayer } from '../components/PlayerContext.jsx';
+import { usePlayer, buildQueue } from '../components/PlayerContext.jsx';
 import { FolderPickerModal } from '../components/FolderPickerModal.jsx';
 import { AddToPlaylistModal } from '../components/AddToPlaylistModal.jsx';
-import { ArrowLeft, UserCheck, UserPlus, User, Pencil, Trash2, Disc, StickyNote, ListOrdered, Clock, Music2, AlertCircle, Info, Heart, History, Play, Pause, FolderSearch, FolderX, ListPlus } from 'lucide-preact';
+import { ArrowLeft, UserCheck, UserPlus, User, Pencil, Trash2, Disc, StickyNote, ListOrdered, Clock, Music2, AlertCircle, Info, Heart, History, Play, Pause, FolderSearch, FolderX, ListPlus, ListEnd, ListStart } from 'lucide-preact';
 import { useI18n } from '../config/i18n/index.jsx';
 import '../styles/AlbumDetail.css';
 
@@ -15,7 +15,7 @@ function fmt(dateStr) {
 
 export function AlbumDetail({ navigate, albumId }) {
   const { t } = useI18n();
-  const { playAlbum, current, playing, toggle, toggleFavorite } = usePlayer();
+  const { playAlbum, current, playing, toggle, toggleFavorite, addToQueue, playNext } = usePlayer();
   const [album, setAlbum] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -301,9 +301,25 @@ export function AlbumDetail({ navigate, albumId }) {
                     <ListPlus size={14} class="me-1" />{t('playlists.addToPlaylist')}
                   </button>
                   {playableTracks.length > 0 && (
-                    <button class="btn btn-sm btn-primary" onClick={() => playAlbum(album)}>
-                      <Play size={14} class="me-1" />{t('player.playAlbum')}
-                    </button>
+                    <>
+                      <button
+                        class="btn btn-sm btn-outline-secondary"
+                        onClick={() => playNext(buildQueue(album))}
+                        title={t('player.playNext')}
+                      >
+                        <ListStart size={14} class="me-1" />{t('player.playNext')}
+                      </button>
+                      <button
+                        class="btn btn-sm btn-outline-secondary"
+                        onClick={() => addToQueue(buildQueue(album))}
+                        title={t('player.addToQueue')}
+                      >
+                        <ListEnd size={14} class="me-1" />{t('player.addToQueue')}
+                      </button>
+                      <button class="btn btn-sm btn-primary" onClick={() => playAlbum(album)}>
+                        <Play size={14} class="me-1" />{t('player.playAlbum')}
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -343,6 +359,26 @@ export function AlbumDetail({ navigate, albumId }) {
                             >
                               <Heart size={14} fill={track.is_favorite ? 'currentColor' : 'none'} />
                             </button>
+                            {track.has_file && (
+                              <>
+                                <button
+                                  class="btn btn-sm btn-icon btn-ghost-secondary"
+                                  onClick={() => playNext(buildQueue(album).filter(qt => qt.id === track.id))}
+                                  title={t('player.playNext')}
+                                  aria-label={t('player.playNext')}
+                                >
+                                  <ListStart size={14} />
+                                </button>
+                                <button
+                                  class="btn btn-sm btn-icon btn-ghost-secondary"
+                                  onClick={() => addToQueue(buildQueue(album).filter(qt => qt.id === track.id))}
+                                  title={t('player.addToQueue')}
+                                  aria-label={t('player.addToQueue')}
+                                >
+                                  <ListEnd size={14} />
+                                </button>
+                              </>
+                            )}
                             <button
                               class="btn btn-sm btn-icon btn-ghost-secondary"
                               onClick={() => setAddToPlaylist({ trackId: track.id })}
