@@ -16,6 +16,10 @@ services:
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
+      # mDNS discovery: multicast does not cross the default bridge NAT, so the
+      # advertisement would be invisible from the LAN. Switch this to "true"
+      # only together with network_mode: host (and drop the ports section).
+      MDNS_ENABLED: ${MDNS_ENABLED:-false}
       # Optional: use your own Last.fm application instead of the built-in key
       LASTFM_API_KEY: ${LASTFM_API_KEY:-}
       LASTFM_API_SECRET: ${LASTFM_API_SECRET:-}
