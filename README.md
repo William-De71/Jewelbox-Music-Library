@@ -134,6 +134,7 @@ même si son adresse a changé.
 |-----------------|-------------------------|-----------------------------------------|
 | `MDNS_ENABLED`  | `true`                  | `false` désactive complètement l'annonce |
 | `MDNS_NAME`     | `JewelBox (<hostname>)` | Nom affiché du service                   |
+| `MDNS_ADDRESS`  | *(autodétectée)*        | IPv4 annoncée. Par défaut : l'adresse de la route par défaut de la machine — ce qui exclut les bridges Docker (`172.x.0.1`), qui seraient injoignables depuis le LAN. À forcer seulement pour les configurations multi-réseaux exotiques. |
 
 Si le multicast est indisponible, l'annonce échoue sans bloquer le démarrage : le
 serveur reste joignable normalement par son adresse IP.
