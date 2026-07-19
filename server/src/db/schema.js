@@ -95,4 +95,11 @@ export const SCHEMA = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_play_history_played_at ON play_history(played_at DESC);
+
+  CREATE TABLE IF NOT EXISTS suggested_albums (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    album_id INTEGER NOT NULL UNIQUE REFERENCES albums(id) ON DELETE CASCADE,
+    day      TEXT NOT NULL,
+    position INTEGER NOT NULL
+  );
 `;

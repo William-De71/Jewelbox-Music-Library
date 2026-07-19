@@ -23,7 +23,7 @@ let playlistId;
 let emptyPlaylistId;
 
 function seed() {
-  testDb.exec('DELETE FROM play_history; DELETE FROM playlist_tracks; DELETE FROM playlists; DELETE FROM tracks; DELETE FROM albums; DELETE FROM artists;');
+  testDb.exec('DELETE FROM suggested_albums; DELETE FROM play_history; DELETE FROM playlist_tracks; DELETE FROM playlists; DELETE FROM tracks; DELETE FROM albums; DELETE FROM artists;');
 
   const artistId = testDb.prepare('INSERT INTO artists (name) VALUES (?)').run('Radiohead').lastInsertRowid;
   const insertAlbum = testDb.prepare(
@@ -217,6 +217,43 @@ describe('GET /player/home', () => {
     expect(body.recent).toEqual([]);
     const count = testDb.prepare('SELECT COUNT(*) AS n FROM play_history').get().n;
     expect(count).toBe(0);
+  });
+
+  it('keeps the same suggestions across calls within a day', async () => {
+    // Enough candidates that a fresh draw would almost surely differ.
+    const artistId = testDb.prepare('SELECT id FROM artists LIMIT 1').get().id;
+    const insertAlbum = testDb.prepare('INSERT INTO albums (title, artist_id, rating) VALUES (?, ?, 3)');
+    const insertTrack = testDb.prepare(
+      'INSERT INTO tracks (album_id, position, title, file_path) VALUES (?, 1, ?, ?)',
+    );
+    for (let i = 0; i < 40; i++) {
+      const id = insertAlbum.run(`Candidate ${i}`, artistId).lastInsertRowid;
+      insertTrack.run(id, `Track ${i}`, `c/${i}.mp3`);
+    }
+
+    const first = (await getHome()).json().suggestions.map(a => a.id);
+    expect(first).toHaveLength(12);
+    for (let i = 0; i < 5; i++) {
+      expect((await getHome()).json().suggestions.map(a => a.id)).toEqual(first);
+    }
+
+    // A new day releases the stored draw.
+    testDb.prepare("UPDATE suggested_albums SET day = '2020-01-01'").run();
+    const next = (await getHome()).json().suggestions.map(a => a.id);
+    expect(next).toHaveLength(12);
+    const stored = testDb.prepare('SELECT COUNT(*) AS n FROM suggested_albums').get().n;
+    expect(stored).toBe(12);
+  });
+
+  it('drops a suggestion that entered the recent section after the draw', async () => {
+    const suggested = (await getHome()).json().suggestions;
+    expect(suggested.length).toBeGreaterThan(0);
+    const target = suggested[0].id;
+
+    await postHistory('album', target);
+    const body = (await getHome()).json();
+    expect(body.suggestions.map(a => a.id)).not.toContain(target);
+    expect(body.recent.some(e => e.album?.id === target)).toBe(true);
   });
 
   it('suggestions exclude wanted, audio-less and recently shown albums', async () => {
