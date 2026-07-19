@@ -1,6 +1,6 @@
 {
   "name": "jewelbox-music-library",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "description": "JewelBox Music Library - Parce que vos albums méritent mieux qu'une simple étagère.",
   "private": true,
   "workspaces": [
