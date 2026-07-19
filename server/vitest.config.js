@@ -25,7 +25,8 @@ export default defineConfig({
         'src/utils/lastfm.js',
       ],
       exclude: ['src/**/*.test.js'],
-      reporter: ['text', 'html'],
+      // json-summary feeds the CI's coverage comment (.github/scripts/coverage_summary.py).
+      reporter: ['text', 'html', 'json-summary'],
       thresholds: {
         lines: 90,
         functions: 95,
