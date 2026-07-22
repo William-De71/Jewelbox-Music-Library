@@ -82,14 +82,36 @@ function runMigrations(database) {
     database.exec(`
       CREATE TABLE play_history (
         id        INTEGER PRIMARY KEY AUTOINCREMENT,
-        item_type TEXT NOT NULL CHECK(item_type IN ('album','playlist')),
-        item_id   INTEGER NOT NULL,
+        item_type TEXT NOT NULL CHECK(item_type IN ('album','playlist','smart')),
+        item_id   INTEGER NOT NULL DEFAULT 0,
+        item_key  TEXT NOT NULL DEFAULT '',
         played_at TEXT NOT NULL DEFAULT (datetime('now')),
-        UNIQUE(item_type, item_id)
+        UNIQUE(item_type, item_id, item_key)
       );
       CREATE INDEX idx_play_history_played_at ON play_history(played_at DESC);
     `);
     console.log('[Migration] Created play_history table');
+  } else if (!database.prepare("PRAGMA table_info(play_history)").all().some(c => c.name === 'item_key')) {
+    // Add smart playlists to the "recently played" section: they have no numeric
+    // id, so history is keyed by a text key (item_key) instead. SQLite can't
+    // widen the item_type CHECK or add the composite UNIQUE in place, so the
+    // table is rebuilt. Existing album/playlist rows keep item_key = ''.
+    database.exec(`
+      CREATE TABLE play_history_new (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_type TEXT NOT NULL CHECK(item_type IN ('album','playlist','smart')),
+        item_id   INTEGER NOT NULL DEFAULT 0,
+        item_key  TEXT NOT NULL DEFAULT '',
+        played_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(item_type, item_id, item_key)
+      );
+      INSERT INTO play_history_new (id, item_type, item_id, item_key, played_at)
+        SELECT id, item_type, item_id, '', played_at FROM play_history;
+      DROP TABLE play_history;
+      ALTER TABLE play_history_new RENAME TO play_history;
+      CREATE INDEX idx_play_history_played_at ON play_history(played_at DESC);
+    `);
+    console.log('[Migration] Added item_key column to play_history (smart playlist history)');
   }
   if (!tables.includes('suggested_albums')) {
     database.exec(`

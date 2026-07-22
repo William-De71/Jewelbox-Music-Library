@@ -1,4 +1,5 @@
 import { getDb } from './database.js';
+import { SMART_PLAYLIST_KEYS, getSmartPlaylists } from './smartPlaylists.js';
 
 // ── Artists ──────────────────────────────────────────────────────────────────
 
@@ -746,16 +747,25 @@ export function closeLoan(albumId) {
 
 const PLAY_HISTORY_CAP = 50;
 
-export function recordPlay(itemType, itemId) {
+// itemKey is only used for 'smart' (its stable text key); album/playlist are
+// keyed by itemId, with item_key stored as '' so the UNIQUE constraint holds.
+export function recordPlay(itemType, itemId, itemKey = '') {
   const db = getDb();
-  const table = itemType === 'album' ? 'albums' : 'playlists';
-  const exists = db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(itemId);
-  if (!exists) return false;
+  let id = 0;
+  let key = '';
+  if (itemType === 'smart') {
+    if (!SMART_PLAYLIST_KEYS.includes(itemKey)) return false;
+    key = itemKey;
+  } else {
+    const table = itemType === 'album' ? 'albums' : 'playlists';
+    if (!db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(itemId)) return false;
+    id = itemId;
+  }
   db.transaction(() => {
     db.prepare(`
-      INSERT INTO play_history (item_type, item_id) VALUES (?, ?)
-      ON CONFLICT(item_type, item_id) DO UPDATE SET played_at = datetime('now')
-    `).run(itemType, itemId);
+      INSERT INTO play_history (item_type, item_id, item_key) VALUES (?, ?, ?)
+      ON CONFLICT(item_type, item_id, item_key) DO UPDATE SET played_at = datetime('now')
+    `).run(itemType, id, key);
     db.prepare(`
       DELETE FROM play_history WHERE id NOT IN
         (SELECT id FROM play_history ORDER BY played_at DESC, id DESC LIMIT ?)
@@ -766,15 +776,23 @@ export function recordPlay(itemType, itemId) {
 
 export function getRecentPlayedItems(limit = 8) {
   const db = getDb();
+  const validSmartKeys = SMART_PLAYLIST_KEYS;
+  const smartPlaceholders = validSmartKeys.map(() => '?').join(',');
   db.prepare(`
     DELETE FROM play_history WHERE
-      (item_type = 'album'    AND item_id NOT IN (SELECT id FROM albums)) OR
-      (item_type = 'playlist' AND item_id NOT IN (SELECT id FROM playlists))
-  `).run();
+      (item_type = 'album'    AND item_id  NOT IN (SELECT id FROM albums))    OR
+      (item_type = 'playlist' AND item_id  NOT IN (SELECT id FROM playlists)) OR
+      (item_type = 'smart'    AND item_key NOT IN (${smartPlaceholders || "''"}))
+  `).run(...validSmartKeys);
   const entries = db.prepare(`
-    SELECT item_type, item_id, played_at FROM play_history
+    SELECT item_type, item_id, item_key, played_at FROM play_history
     ORDER BY played_at DESC, id DESC LIMIT ?
   `).all(limit);
+  // Track counts per smart key, computed only if a smart entry is present.
+  const hasSmart = entries.some(e => e.item_type === 'smart');
+  const smartCounts = hasSmart
+    ? Object.fromEntries(getSmartPlaylists().map(s => [s.key, s.track_count]))
+    : {};
 
   const albumStmt = db.prepare(`${ALBUM_SELECT} WHERE a.id = ?`);
   const playlistStmt = db.prepare(`
@@ -798,9 +816,14 @@ export function getRecentPlayedItems(limit = 8) {
     ORDER BY pt.position LIMIT 1
   `);
 
-  return entries.map(({ item_type, item_id, played_at }) => {
+  return entries.map(({ item_type, item_id, item_key, played_at }) => {
     if (item_type === 'album') {
       return { item_type, played_at, album: mapAlbum(albumStmt.get(item_id)) };
+    }
+    if (item_type === 'smart') {
+      // Label and icon are resolved client-side from the key; the server only
+      // carries the key and the current track count.
+      return { item_type, played_at, smart: { key: item_key, track_count: smartCounts[item_key] ?? 0 } };
     }
     const playlist = playlistStmt.get(item_id);
     const seconds = playlistDurationsStmt.all(item_id)
