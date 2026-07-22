@@ -86,6 +86,10 @@ function postHistory(item_type, item_id) {
   return app.inject({ method: 'POST', url: '/player/history', payload: { item_type, item_id } });
 }
 
+function postSmartHistory(item_key) {
+  return app.inject({ method: 'POST', url: '/player/history', payload: { item_type: 'smart', item_key } });
+}
+
 function getHome() {
   return app.inject({ method: 'GET', url: '/player/home' });
 }
@@ -113,6 +117,26 @@ describe('POST /player/history', () => {
     expect((await postHistory('playlist', playlistId)).statusCode).toBe(204);
     const count = testDb.prepare('SELECT COUNT(*) AS n FROM play_history').get().n;
     expect(count).toBe(2);
+  });
+
+  it('records a smart playlist play by key with 204', async () => {
+    expect((await postSmartHistory('favourites')).statusCode).toBe(204);
+    const row = testDb.prepare("SELECT item_type, item_id, item_key FROM play_history").get();
+    expect(row).toMatchObject({ item_type: 'smart', item_id: 0, item_key: 'favourites' });
+  });
+
+  it('rejects a smart play with a missing or unknown key', async () => {
+    expect((await postSmartHistory('')).statusCode).toBe(400);
+    expect((await postSmartHistory(undefined)).statusCode).toBe(400);
+    expect((await postSmartHistory('not_a_real_key')).statusCode).toBe(404);
+  });
+
+  it('replaying a smart playlist keeps one row and refreshes it', async () => {
+    await postSmartHistory('favourites');
+    testDb.prepare("UPDATE play_history SET played_at = '2020-01-01 00:00:00'").run();
+    await postSmartHistory('favourites');
+    const rows = testDb.prepare("SELECT COUNT(*) AS n FROM play_history WHERE item_type = 'smart'").get();
+    expect(rows.n).toBe(1);
   });
 
   it('replaying an item keeps one row and moves it to the front', async () => {
@@ -206,6 +230,44 @@ describe('GET /player/home', () => {
     const empty = body.recent.find(e => e.item_type === 'playlist' && e.playlist.id === emptyPlaylistId);
     expect(empty.playlist.cover_url).toBeNull();
     expect(empty.playlist.track_count).toBe(0);
+  });
+
+  it('carries a smart playlist entry with its key and track count', async () => {
+    // A favourite track so the "favourites" smart playlist has a non-zero count.
+    testDb.prepare('UPDATE tracks SET is_favorite = 1 WHERE id IN (SELECT id FROM tracks WHERE file_path IS NOT NULL LIMIT 2)').run();
+    await postSmartHistory('favourites');
+
+    const body = (await getHome()).json();
+    const entry = body.recent.find(e => e.item_type === 'smart');
+    expect(entry).toBeDefined();
+    expect(entry.smart.key).toBe('favourites');
+    expect(entry.smart.track_count).toBeGreaterThan(0);
+    expect(entry.album).toBeUndefined();
+    expect(entry.playlist).toBeUndefined();
+  });
+
+  it('sorts a smart entry among albums and playlists by recency', async () => {
+    const stamp = testDb.prepare('UPDATE play_history SET played_at = ? WHERE item_type = ? AND item_key = ?');
+    const stampId = testDb.prepare('UPDATE play_history SET played_at = ? WHERE item_type = ? AND item_id = ?');
+    await postHistory('album', albumIds.rated5);
+    stampId.run('2026-01-01 00:00:00', 'album', albumIds.rated5);
+    await postSmartHistory('newest');
+    stamp.run('2026-01-01 00:01:00', 'smart', 'newest');
+
+    const body = (await getHome()).json();
+    expect(body.recent[0].item_type).toBe('smart');
+    expect(body.recent[0].smart.key).toBe('newest');
+  });
+
+  it('drops a smart entry whose key is no longer valid', async () => {
+    // Simulate a stale row from a future/renamed key: insert it directly.
+    testDb.prepare("INSERT INTO play_history (item_type, item_id, item_key) VALUES ('smart', 0, 'ghost_key')").run();
+    await postSmartHistory('favourites');
+
+    const body = (await getHome()).json();
+    expect(body.recent.some(e => e.item_type === 'smart' && e.smart.key === 'ghost_key')).toBe(false);
+    const count = testDb.prepare("SELECT COUNT(*) AS n FROM play_history WHERE item_key = 'ghost_key'").get().n;
+    expect(count).toBe(0);
   });
 
   it('drops deleted albums and playlists from recent', async () => {

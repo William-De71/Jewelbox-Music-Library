@@ -88,10 +88,11 @@ export const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS play_history (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_type TEXT NOT NULL CHECK(item_type IN ('album','playlist')),
-    item_id   INTEGER NOT NULL,
+    item_type TEXT NOT NULL CHECK(item_type IN ('album','playlist','smart')),
+    item_id   INTEGER NOT NULL DEFAULT 0,
+    item_key  TEXT NOT NULL DEFAULT '',
     played_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(item_type, item_id)
+    UNIQUE(item_type, item_id, item_key)
   );
 
   CREATE INDEX IF NOT EXISTS idx_play_history_played_at ON play_history(played_at DESC);

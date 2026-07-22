@@ -127,13 +127,24 @@ export async function playerRoutes(fastify) {
     }
   });
 
-  // Records that playback started from an album or playlist, feeding the
-  // "recently played" section of the app's home screen.
+  // Records that playback started from an album, a playlist or a smart playlist,
+  // feeding the "recently played" section of the app's home screen. Album and
+  // playlist are keyed by item_id; a smart playlist has no numeric id and is
+  // keyed by its stable text key (item_key).
   fastify.post('/player/history', async (req, reply) => {
     try {
-      const { item_type, item_id } = req.body ?? {};
-      if (item_type !== 'album' && item_type !== 'playlist') {
-        return reply.code(400).send({ error: "item_type must be 'album' or 'playlist'" });
+      const { item_type, item_id, item_key } = req.body ?? {};
+      if (item_type !== 'album' && item_type !== 'playlist' && item_type !== 'smart') {
+        return reply.code(400).send({ error: "item_type must be 'album', 'playlist' or 'smart'" });
+      }
+      if (item_type === 'smart') {
+        if (typeof item_key !== 'string' || !item_key) {
+          return reply.code(400).send({ error: 'item_key is required for a smart playlist' });
+        }
+        if (!recordPlay('smart', 0, item_key)) {
+          return reply.code(404).send({ error: 'smart playlist not found' });
+        }
+        return reply.code(204).send();
       }
       if (!Number.isInteger(item_id) || item_id <= 0) {
         return reply.code(400).send({ error: 'item_id must be a positive integer' });
