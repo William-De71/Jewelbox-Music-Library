@@ -259,6 +259,18 @@ describe('GET /player/home', () => {
     expect(body.recent[0].smart.key).toBe('newest');
   });
 
+  it('sizes the smart ranking counts with ?smart_limit=', async () => {
+    await postSmartHistory('newest');
+    const playable = testDb.prepare('SELECT COUNT(*) AS n FROM tracks WHERE file_path IS NOT NULL').get().n;
+    expect(playable).toBeGreaterThan(1);
+
+    const sized = (await app.inject({ method: 'GET', url: '/player/home?smart_limit=1' })).json();
+    expect(sized.recent.find(e => e.item_type === 'smart' && e.smart.key === 'newest').smart.track_count).toBe(1);
+
+    const bad = await app.inject({ method: 'GET', url: '/player/home?smart_limit=0' });
+    expect(bad.statusCode).toBe(400);
+  });
+
   it('drops a smart entry whose key is no longer valid', async () => {
     // Simulate a stale row from a future/renamed key: insert it directly.
     testDb.prepare("INSERT INTO play_history (item_type, item_id, item_key) VALUES ('smart', 0, 'ghost_key')").run();

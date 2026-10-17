@@ -19,6 +19,17 @@ export const RANKING_LIMIT_MAX = 1000;
 // The "top N" rankings: capped lists whose size a client may choose.
 const RANKING_KEYS = new Set(['newest', 'last_played', 'most_played']);
 
+// Validates a client-chosen ranking size (a raw query-string value). Returns
+// { value } (undefined when absent) or { error } for a 400.
+export function parseRankingLimit(raw) {
+  if (raw === undefined) return { value: undefined };
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < RANKING_LIMIT_MIN || value > RANKING_LIMIT_MAX) {
+    return { error: `limit must be an integer between ${RANKING_LIMIT_MIN} and ${RANKING_LIMIT_MAX}` };
+  }
+  return { value };
+}
+
 // limit: null = no cap. Only the "top N" rankings (newest, last/most played)
 // are capped; the other lists return every matching track, however large
 // the library is.

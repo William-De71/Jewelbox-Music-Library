@@ -1,6 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import { getMusicLibraryPath } from '../db/settings.js';
+import { parseRankingLimit } from '../db/smartPlaylists.js';
 import { startScan, getScanStatus, matchManualFolder, isAudioFile } from '../utils/audioScanner.js';
 import {
   getAlbumById,
@@ -276,9 +277,13 @@ export async function playerRoutes(fastify) {
   // albums (drawn once per day, see getSuggestedAlbums). Albums that entered the
   // recent section after the draw are filtered out here so the two sections
   // never show the same album twice.
+  // Optional ?smart_limit=: the client's size for the smart "top N" rankings
+  // (see /smart-playlists?limit=), used for the smart tiles' track counts.
   fastify.get('/player/home', async (req, reply) => {
     try {
-      const recent = getRecentPlayedItems(8);
+      const rankingLimit = parseRankingLimit(req.query?.smart_limit);
+      if (rankingLimit.error) return reply.code(400).send({ error: rankingLimit.error });
+      const recent = getRecentPlayedItems(8, { rankingLimit: rankingLimit.value });
       const excludeIds = recent
         .filter(e => e.item_type === 'album')
         .map(e => e.album.id);
