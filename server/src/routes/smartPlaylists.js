@@ -3,12 +3,15 @@ import {
   getSmartPlaylistTracks,
   consumeDynamicMixTrack,
   refreshDynamicMix,
+  parseRankingLimit,
 } from '../db/smartPlaylists.js';
 
 export async function smartPlaylistRoutes(fastify) {
   fastify.get('/smart-playlists', async (req, reply) => {
     try {
-      return { data: getSmartPlaylists() };
+      const limit = parseRankingLimit(req.query?.limit);
+      if (limit.error) return reply.code(400).send({ error: limit.error });
+      return { data: getSmartPlaylists({ rankingLimit: limit.value }) };
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }
@@ -48,7 +51,9 @@ export async function smartPlaylistRoutes(fastify) {
 
   fastify.get('/smart-playlists/:key', async (req, reply) => {
     try {
-      const tracks = getSmartPlaylistTracks(req.params.key);
+      const limit = parseRankingLimit(req.query?.limit);
+      if (limit.error) return reply.code(400).send({ error: limit.error });
+      const tracks = getSmartPlaylistTracks(req.params.key, { rankingLimit: limit.value });
       if (!tracks) return reply.code(404).send({ error: 'Unknown smart playlist' });
       return { key: req.params.key, tracks };
     } catch (err) {

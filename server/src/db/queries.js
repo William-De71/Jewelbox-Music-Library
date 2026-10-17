@@ -774,7 +774,9 @@ export function recordPlay(itemType, itemId, itemKey = '') {
   return true;
 }
 
-export function getRecentPlayedItems(limit = 8) {
+// rankingLimit: size of the smart "top N" rankings, so the track count shown
+// on a recent smart tile matches the list the client will open.
+export function getRecentPlayedItems(limit = 8, { rankingLimit } = {}) {
   const db = getDb();
   const validSmartKeys = SMART_PLAYLIST_KEYS;
   const smartPlaceholders = validSmartKeys.map(() => '?').join(',');
@@ -791,7 +793,7 @@ export function getRecentPlayedItems(limit = 8) {
   // Track counts per smart key, computed only if a smart entry is present.
   const hasSmart = entries.some(e => e.item_type === 'smart');
   const smartCounts = hasSmart
-    ? Object.fromEntries(getSmartPlaylists().map(s => [s.key, s.track_count]))
+    ? Object.fromEntries(getSmartPlaylists({ rankingLimit }).map(s => [s.key, s.track_count]))
     : {};
 
   const albumStmt = db.prepare(`${ALBUM_SELECT} WHERE a.id = ?`);

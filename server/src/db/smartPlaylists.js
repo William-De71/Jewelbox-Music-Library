@@ -12,6 +12,24 @@ const ALPHA_ORDER = 'ar.name COLLATE NOCASE, a.title COLLATE NOCASE, t.position'
 
 const DYNAMIC_MIX_SIZE = 50;
 
+// Bounds for the caller-chosen size of the "top N" rankings (?limit=).
+export const RANKING_LIMIT_MIN = 1;
+export const RANKING_LIMIT_MAX = 1000;
+
+// The "top N" rankings: capped lists whose size a client may choose.
+const RANKING_KEYS = new Set(['newest', 'last_played', 'most_played']);
+
+// Validates a client-chosen ranking size (a raw query-string value). Returns
+// { value } (undefined when absent) or { error } for a 400.
+export function parseRankingLimit(raw) {
+  if (raw === undefined) return { value: undefined };
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < RANKING_LIMIT_MIN || value > RANKING_LIMIT_MAX) {
+    return { error: `limit must be an integer between ${RANKING_LIMIT_MIN} and ${RANKING_LIMIT_MAX}` };
+  }
+  return { value };
+}
+
 // limit: null = no cap. Only the "top N" rankings (newest, last/most played)
 // are capped; the other lists return every matching track, however large
 // the library is.
@@ -78,23 +96,35 @@ export function consumeDynamicMixTrack(trackId) {
   return { removed, tracks: getDynamicMixTracks(db) };
 }
 
-export function getSmartPlaylists() {
+// Effective cap for a list: the caller's rankingLimit applies to the "top N"
+// rankings only; every other list keeps its own definition.
+function effectiveLimit(key, rankingLimit) {
+  const def = DEFINITIONS[key];
+  if (rankingLimit != null && RANKING_KEYS.has(key)) return rankingLimit;
+  return def.limit;
+}
+
+// rankingLimit (optional): size of the "top N" rankings, already validated
+// by the route (integer within RANKING_LIMIT_MIN..RANKING_LIMIT_MAX).
+export function getSmartPlaylists({ rankingLimit } = {}) {
   const db = getDb();
   return SMART_PLAYLIST_KEYS.map(key => {
     const def = DEFINITIONS[key];
+    const limit = effectiveLimit(key, rankingLimit);
     const { count } = db.prepare(`SELECT COUNT(*) AS count ${BASE_FROM} ${def.where}`).get();
-    return { key, track_count: def.limit == null ? count : Math.min(count, def.limit) };
+    return { key, track_count: limit == null ? count : Math.min(count, limit) };
   });
 }
 
 // Returns queue-shaped tracks, or null for an unknown key.
-export function getSmartPlaylistTracks(key) {
+export function getSmartPlaylistTracks(key, { rankingLimit } = {}) {
   const def = DEFINITIONS[key];
   if (!def) return null;
   if (key === 'dynamic_mix') return getDynamicMixTracks(getDb());
 
+  const limit = effectiveLimit(key, rankingLimit);
   const rows = getDb()
-    .prepare(`SELECT ${QUEUE_TRACK_FIELDS} ${BASE_FROM} ${def.where} ORDER BY ${def.order}${def.limit == null ? '' : ` LIMIT ${def.limit}`}`)
+    .prepare(`SELECT ${QUEUE_TRACK_FIELDS} ${BASE_FROM} ${def.where} ORDER BY ${def.order}${limit == null ? '' : ` LIMIT ${limit}`}`)
     .all();
   return rows.map(mapQueueTrack);
 }
