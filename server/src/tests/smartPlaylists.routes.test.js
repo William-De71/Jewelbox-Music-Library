@@ -205,3 +205,32 @@ describe('dynamic mix persistence', () => {
     expect(await getIds()).toHaveLength(3); // restored track is re-picked to fill up
   });
 });
+
+describe('uncapped smart playlists', () => {
+  it('returns every matching track for all_tracks, beyond the old 1000 cap', async () => {
+    const artistId = testDb.prepare('INSERT INTO artists (name) VALUES (?)').run('Big Library').lastInsertRowid;
+    const albumId = testDb.prepare('INSERT INTO albums (title, artist_id) VALUES (?, ?)').run('Box Set', artistId).lastInsertRowid;
+    const insert = testDb.prepare('INSERT INTO tracks (album_id, position, title, file_path) VALUES (?, ?, ?, ?)');
+    const bulkIds = testDb.transaction(() => {
+      const out = [];
+      for (let i = 1; i <= 1200; i += 1) out.push(insert.run(albumId, i, `Track ${i}`, `big/${i}.mp3`).lastInsertRowid);
+      return out;
+    })();
+    try {
+      const list = await app.inject({ method: 'GET', url: '/smart-playlists' });
+      const byKey = Object.fromEntries(list.json().data.map(p => [p.key, p.track_count]));
+      expect(byKey.all_tracks).toBe(1203);
+      expect(byKey.never_played).toBe(1201);
+      // "Top N" rankings stay capped.
+      expect(byKey.newest).toBe(100);
+
+      const res = await app.inject({ method: 'GET', url: '/smart-playlists/all_tracks' });
+      expect(res.json().tracks).toHaveLength(1203);
+    } finally {
+      testDb.prepare(`DELETE FROM dynamic_mix_tracks WHERE track_id IN (${bulkIds.join(',')})`).run();
+      testDb.prepare(`DELETE FROM tracks WHERE id IN (${bulkIds.join(',')})`).run();
+      testDb.prepare('DELETE FROM albums WHERE id = ?').run(albumId);
+      testDb.prepare('DELETE FROM artists WHERE id = ?').run(artistId);
+    }
+  });
+});

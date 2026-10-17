@@ -12,14 +12,17 @@ const ALPHA_ORDER = 'ar.name COLLATE NOCASE, a.title COLLATE NOCASE, t.position'
 
 const DYNAMIC_MIX_SIZE = 50;
 
+// limit: null = no cap. Only the "top N" rankings (newest, last/most played)
+// are capped; the other lists return every matching track, however large
+// the library is.
 const DEFINITIONS = {
   newest: { where: '', order: 'a.created_at DESC, a.id, t.position', limit: 100 },
-  ever_played: { where: 'AND t.play_count > 0', order: ALPHA_ORDER, limit: 500 },
-  never_played: { where: 'AND t.play_count = 0', order: ALPHA_ORDER, limit: 500 },
+  ever_played: { where: 'AND t.play_count > 0', order: ALPHA_ORDER, limit: null },
+  never_played: { where: 'AND t.play_count = 0', order: ALPHA_ORDER, limit: null },
   last_played: { where: 'AND t.last_played_at IS NOT NULL', order: 't.last_played_at DESC', limit: 100 },
   most_played: { where: 'AND t.play_count > 0', order: 't.play_count DESC, t.last_played_at DESC', limit: 100 },
-  favourites: { where: 'AND t.is_favorite = 1', order: ALPHA_ORDER, limit: 500 },
-  all_tracks: { where: '', order: ALPHA_ORDER, limit: 1000 },
+  favourites: { where: 'AND t.is_favorite = 1', order: ALPHA_ORDER, limit: null },
+  all_tracks: { where: '', order: ALPHA_ORDER, limit: null },
   dynamic_mix: { where: '', order: null, limit: DYNAMIC_MIX_SIZE }, // persistent, see below
 };
 
@@ -80,7 +83,7 @@ export function getSmartPlaylists() {
   return SMART_PLAYLIST_KEYS.map(key => {
     const def = DEFINITIONS[key];
     const { count } = db.prepare(`SELECT COUNT(*) AS count ${BASE_FROM} ${def.where}`).get();
-    return { key, track_count: Math.min(count, def.limit) };
+    return { key, track_count: def.limit == null ? count : Math.min(count, def.limit) };
   });
 }
 
@@ -91,7 +94,7 @@ export function getSmartPlaylistTracks(key) {
   if (key === 'dynamic_mix') return getDynamicMixTracks(getDb());
 
   const rows = getDb()
-    .prepare(`SELECT ${QUEUE_TRACK_FIELDS} ${BASE_FROM} ${def.where} ORDER BY ${def.order} LIMIT ${def.limit}`)
+    .prepare(`SELECT ${QUEUE_TRACK_FIELDS} ${BASE_FROM} ${def.where} ORDER BY ${def.order}${def.limit == null ? '' : ` LIMIT ${def.limit}`}`)
     .all();
   return rows.map(mapQueueTrack);
 }
