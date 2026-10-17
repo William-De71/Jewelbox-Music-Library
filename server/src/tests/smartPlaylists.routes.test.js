@@ -224,6 +224,18 @@ describe('uncapped smart playlists', () => {
       // "Top N" rankings stay capped.
       expect(byKey.newest).toBe(100);
 
+      // ...at a size the client may choose; other lists ignore ?limit=.
+      const sized = await app.inject({ method: 'GET', url: '/smart-playlists?limit=500' });
+      const sizedByKey = Object.fromEntries(sized.json().data.map(p => [p.key, p.track_count]));
+      expect(sizedByKey.newest).toBe(500);
+      expect(sizedByKey.all_tracks).toBe(1203);
+      expect(sizedByKey.dynamic_mix).toBe(50);
+
+      const newest = await app.inject({ method: 'GET', url: '/smart-playlists/newest?limit=250' });
+      expect(newest.json().tracks).toHaveLength(250);
+      const allTracks = await app.inject({ method: 'GET', url: '/smart-playlists/all_tracks?limit=5' });
+      expect(allTracks.json().tracks).toHaveLength(1203);
+
       const res = await app.inject({ method: 'GET', url: '/smart-playlists/all_tracks' });
       expect(res.json().tracks).toHaveLength(1203);
     } finally {
@@ -232,5 +244,22 @@ describe('uncapped smart playlists', () => {
       testDb.prepare('DELETE FROM albums WHERE id = ?').run(albumId);
       testDb.prepare('DELETE FROM artists WHERE id = ?').run(artistId);
     }
+  });
+});
+
+describe('?limit= validation', () => {
+  it.each(['0', '1001', 'abc', '2.5'])('rejects limit=%s', async (limit) => {
+    const list = await app.inject({ method: 'GET', url: `/smart-playlists?limit=${limit}` });
+    expect(list.statusCode).toBe(400);
+    const one = await app.inject({ method: 'GET', url: `/smart-playlists/newest?limit=${limit}` });
+    expect(one.statusCode).toBe(400);
+  });
+
+  it('accepts the bounds', async () => {
+    const low = await app.inject({ method: 'GET', url: '/smart-playlists/most_played?limit=1' });
+    expect(low.statusCode).toBe(200);
+    expect(low.json().tracks).toHaveLength(1);
+    const high = await app.inject({ method: 'GET', url: '/smart-playlists?limit=1000' });
+    expect(high.statusCode).toBe(200);
   });
 });
