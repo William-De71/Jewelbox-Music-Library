@@ -246,3 +246,36 @@ describe('device isolation', () => {
     expect(data[0]).toMatchObject({ device_id: OTHER, device_label: 'Xiaomi', track_count: 1 });
   });
 });
+
+describe('GET /player/queue/devices/:deviceId', () => {
+  it("returns another device's queue without changing it", async () => {
+    await call('PUT', '/player/queue', {
+      track_ids: [trackIds[2], trackIds[0]], current_index: 1, position_sec: 42, device_label: 'Phone',
+    }, OTHER);
+
+    const res = await call('GET', `/player/queue/devices/${OTHER}`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      device_id: OTHER, device_label: 'Phone', current_index: 1, position_sec: 42,
+    });
+    expect(res.json().tracks.map(t => t.id)).toEqual([trackIds[2], trackIds[0]]);
+
+    // The caller's own queue is untouched.
+    expect((await call('GET', '/player/queue')).json().tracks).toEqual([]);
+  });
+
+  it('404s for a device without a queue', async () => {
+    const res = await call('GET', '/player/queue/devices/nobody');
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('requires the caller to identify itself', async () => {
+    const res = await call('GET', `/player/queue/devices/${OTHER}`, undefined, null);
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects an over-long device id', async () => {
+    const res = await call('GET', `/player/queue/devices/${'x'.repeat(65)}`);
+    expect(res.statusCode).toBe(400);
+  });
+});

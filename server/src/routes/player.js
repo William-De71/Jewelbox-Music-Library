@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { getMusicLibraryPath } from '../db/settings.js';
 import { parseRankingLimit } from '../db/smartPlaylists.js';
+import { getRadio, RADIO_DEFAULT_SIZE, RADIO_MAX_SIZE } from '../db/radio.js';
 import { startScan, getScanStatus, matchManualFolder, isAudioFile } from '../utils/audioScanner.js';
 import {
   getAlbumById,
@@ -268,6 +269,49 @@ export async function playerRoutes(fastify) {
       const device = requireDeviceId(req, reply);
       if (!device) return reply;
       return { data: listQueueDevices(device) };
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // The queue another device left behind (same shape as GET /player/queue),
+  // for "resume on this device". Read-only: the other device keeps its queue.
+  fastify.get('/player/queue/devices/:deviceId', async (req, reply) => {
+    try {
+      const device = requireDeviceId(req, reply);
+      if (!device) return reply;
+      const other = String(req.params.deviceId || '').trim();
+      if (!other || other.length > 64) {
+        return reply.code(400).send({ error: 'invalid device id' });
+      }
+      const queue = getQueue(other);
+      if (!queue.tracks.length) return reply.code(404).send({ error: 'No queue for this device' });
+      return queue;
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Radio around a seed: ?album_id= or ?artist_id=, optional ?size= (1–200).
+  fastify.get('/player/radio', async (req, reply) => {
+    try {
+      const { album_id, artist_id, size } = req.query ?? {};
+      const albumId = album_id != null ? Number(album_id) : null;
+      const artistId = artist_id != null ? Number(artist_id) : null;
+      if ((albumId == null) === (artistId == null)) {
+        return reply.code(400).send({ error: 'exactly one of album_id or artist_id is required' });
+      }
+      const seedId = albumId ?? artistId;
+      if (!Number.isInteger(seedId) || seedId <= 0) {
+        return reply.code(400).send({ error: 'album_id / artist_id must be a positive integer' });
+      }
+      const count = size != null ? Number(size) : RADIO_DEFAULT_SIZE;
+      if (!Number.isInteger(count) || count < 1 || count > RADIO_MAX_SIZE) {
+        return reply.code(400).send({ error: `size must be an integer between 1 and ${RADIO_MAX_SIZE}` });
+      }
+      const radio = getRadio({ albumId, artistId, size: count });
+      if (!radio) return reply.code(404).send({ error: `${albumId != null ? 'Album' : 'Artist'} not found` });
+      return radio;
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }
