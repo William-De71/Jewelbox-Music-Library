@@ -581,20 +581,26 @@ function resequenceQueue(db, deviceId) {
   return ids.length;
 }
 
-function touchQueueState(db, deviceId, { currentIndex, positionSec, label } = {}) {
+// source: what the queue was started from ("Mix dynamique", an album title…),
+// replaced by every full save (undefined keeps the stored one, null clears it).
+function touchQueueState(db, deviceId, { currentIndex, positionSec, label, source } = {}) {
+  const replaceSource = source !== undefined;
   db.prepare(`
-    INSERT INTO player_queue_state (device_id, device_label, current_index, position_sec, updated_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
+    INSERT INTO player_queue_state (device_id, device_label, source_label, current_index, position_sec, updated_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(device_id) DO UPDATE SET
       device_label  = COALESCE(excluded.device_label, player_queue_state.device_label),
+      source_label  = CASE WHEN ? THEN excluded.source_label ELSE player_queue_state.source_label END,
       current_index = COALESCE(?, player_queue_state.current_index),
       position_sec  = COALESCE(?, player_queue_state.position_sec),
       updated_at    = datetime('now')
   `).run(
     deviceId,
     label ?? null,
+    source ?? null,
     currentIndex ?? -1,
     positionSec ?? 0,
+    replaceSource ? 1 : 0,
     currentIndex ?? null,
     positionSec ?? null,
   );
@@ -614,12 +620,13 @@ export function getQueue(deviceId) {
     ORDER BY q.position, q.id
   `).all(deviceId);
   const state = db
-    .prepare('SELECT device_label, current_index, position_sec, updated_at FROM player_queue_state WHERE device_id = ?')
+    .prepare('SELECT device_label, source_label, current_index, position_sec, updated_at FROM player_queue_state WHERE device_id = ?')
     .get(deviceId);
 
   return {
     device_id: deviceId,
     device_label: state?.device_label ?? null,
+    source_label: state?.source_label ?? null,
     current_index: state?.current_index ?? -1,
     position_sec: state?.position_sec ?? 0,
     updated_at: state?.updated_at ?? null,
@@ -629,7 +636,7 @@ export function getQueue(deviceId) {
 
 // Full replacement: what the client sends when playback starts from an album,
 // a playlist or a shuffle toggle. Unknown track ids are dropped silently.
-export function saveQueue(deviceId, trackIds, { currentIndex, positionSec, label } = {}) {
+export function saveQueue(deviceId, trackIds, { currentIndex, positionSec, label, source = null } = {}) {
   const db = getDb();
   const insert = db.prepare('INSERT INTO player_queue (device_id, track_id, position) VALUES (?, ?, ?)');
   const exists = db.prepare('SELECT 1 FROM tracks WHERE id = ?');
@@ -639,7 +646,7 @@ export function saveQueue(deviceId, trackIds, { currentIndex, positionSec, label
     for (const trackId of trackIds) {
       if (exists.get(trackId)) insert.run(deviceId, trackId, ++position);
     }
-    touchQueueState(db, deviceId, { currentIndex, positionSec, label });
+    touchQueueState(db, deviceId, { currentIndex, positionSec, label, source });
   })();
   return getQueue(deviceId);
 }
@@ -704,10 +711,14 @@ export function clearQueue(deviceId) {
 }
 
 // Other devices with a non-empty queue, for "resume from another device".
+// Each row also names what that device was on (source_label) and its current
+// track, so "resume from…" can say what it would pick up.
 export function listQueueDevices(excludeDeviceId = null) {
-  return getDb().prepare(`
+  const db = getDb();
+  const rows = db.prepare(`
     SELECT q.device_id,
            s.device_label,
+           s.source_label,
            s.current_index,
            s.updated_at,
            COUNT(q.id) AS track_count
@@ -717,6 +728,20 @@ export function listQueueDevices(excludeDeviceId = null) {
     GROUP BY q.device_id
     ORDER BY s.updated_at DESC
   `).all(excludeDeviceId);
+  const current = db.prepare(`
+    SELECT t.id, t.title, ar.name AS artist_name, a.title AS album_title, a.cover_url
+    FROM player_queue q
+    JOIN tracks t ON t.id = q.track_id
+    JOIN albums a ON a.id = t.album_id
+    JOIN artists ar ON ar.id = a.artist_id
+    WHERE q.device_id = ?
+    ORDER BY q.position, q.id
+    LIMIT 1 OFFSET ?
+  `);
+  return rows.map(row => ({
+    ...row,
+    current_track: current.get(row.device_id, Math.max(0, row.current_index ?? 0)) ?? null,
+  }));
 }
 
 // ── Loan History ──────────────────────────────────────────────────────────────
