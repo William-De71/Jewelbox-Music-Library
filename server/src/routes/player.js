@@ -178,7 +178,7 @@ export async function playerRoutes(fastify) {
       const device = requireDeviceId(req, reply);
       if (!device) return reply;
 
-      const { track_ids, current_index, position_sec, device_label } = req.body ?? {};
+      const { track_ids, current_index, position_sec, device_label, source_label } = req.body ?? {};
       if (!Array.isArray(track_ids)) {
         return reply.code(400).send({ error: 'track_ids array is required' });
       }
@@ -189,6 +189,7 @@ export async function playerRoutes(fastify) {
         currentIndex: Number.isInteger(current_index) ? current_index : -1,
         positionSec: Number.isFinite(position_sec) ? position_sec : 0,
         label: device_label ? String(device_label).slice(0, 64) : null,
+        source: source_label ? String(source_label).slice(0, 120) : null,
       });
     } catch (err) {
       return reply.code(500).send({ error: err.message });

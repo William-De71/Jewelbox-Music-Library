@@ -137,12 +137,18 @@ function runMigrations(database) {
       CREATE TABLE player_queue_state (
         device_id     TEXT PRIMARY KEY,
         device_label  TEXT,
+        source_label  TEXT,
         current_index INTEGER NOT NULL DEFAULT -1,
         position_sec  REAL NOT NULL DEFAULT 0,
         updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
     console.log('[Migration] Created player_queue tables');
+  }
+  const queueStateCols = database.prepare("PRAGMA table_info(player_queue_state)").all().map(c => c.name);
+  if (!queueStateCols.includes('source_label')) {
+    database.exec("ALTER TABLE player_queue_state ADD COLUMN source_label TEXT");
+    console.log('[Migration] Added source_label column to player_queue_state');
   }
   if (!tables.includes('loan_history')) {
     database.exec(`

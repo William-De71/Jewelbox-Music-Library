@@ -245,6 +245,42 @@ describe('device isolation', () => {
     expect(data).toHaveLength(1);
     expect(data[0]).toMatchObject({ device_id: OTHER, device_label: 'Xiaomi', track_count: 1 });
   });
+
+  it('says what each device was playing: its source and current track', async () => {
+    await call('PUT', '/player/queue', {
+      track_ids: [trackIds[0], trackIds[1], trackIds[2]], current_index: 1,
+      device_label: 'Pixel', source_label: 'Mix dynamique',
+    }, OTHER);
+
+    const { data } = (await call('GET', '/player/queue/devices')).json();
+    expect(data[0]).toMatchObject({
+      source_label: 'Mix dynamique',
+      current_track: {
+        id: trackIds[1], title: 'Paranoid Android', artist_name: 'Radiohead',
+        album_title: 'OK Computer', cover_url: '/covers/ok.jpg',
+      },
+    });
+  });
+
+  it('falls back to the first track when no current index was sent', async () => {
+    await call('PUT', '/player/queue', { track_ids: [trackIds[2], trackIds[0]] }, OTHER);
+    const { data } = (await call('GET', '/player/queue/devices')).json();
+    expect(data[0]).toMatchObject({ source_label: null, current_track: { id: trackIds[2] } });
+  });
+
+  it('keeps the source across progress pings but replaces it on a new queue', async () => {
+    await call('PUT', '/player/queue', { track_ids: [trackIds[0]], source_label: 'OK Computer' }, OTHER);
+    await call('PATCH', '/player/queue/state', { current_index: 0, position_sec: 30 }, OTHER);
+    expect((await call('GET', '/player/queue', undefined, OTHER)).json().source_label).toBe('OK Computer');
+
+    await call('PUT', '/player/queue', { track_ids: [trackIds[1]] }, OTHER);
+    expect((await call('GET', '/player/queue', undefined, OTHER)).json().source_label).toBeNull();
+  });
+
+  it('caps the source label length', async () => {
+    await call('PUT', '/player/queue', { track_ids: [trackIds[0]], source_label: 'x'.repeat(500) }, OTHER);
+    expect((await call('GET', '/player/queue', undefined, OTHER)).json().source_label).toHaveLength(120);
+  });
 });
 
 describe('GET /player/queue/devices/:deviceId', () => {

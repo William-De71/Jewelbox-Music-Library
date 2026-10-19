@@ -117,6 +117,7 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS player_queue_state (
     device_id     TEXT PRIMARY KEY,
     device_label  TEXT,
+    source_label  TEXT,
     current_index INTEGER NOT NULL DEFAULT -1,
     position_sec  REAL NOT NULL DEFAULT 0,
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
