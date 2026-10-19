@@ -79,7 +79,10 @@ jobs:
           load: true
           tags: jewelbox:main-${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # The cache is an optimisation: GitHub can refuse to store it (e.g. a
+          # PR run that starts after the PR was merged), which must not fail
+          # a build that otherwise succeeded.
+          cache-to: type=gha,mode=max,ignore-error=true
 
       - name: Run smoke test
         run: |
