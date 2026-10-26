@@ -5,6 +5,7 @@ import { TopMenu } from './TopMenu.jsx';
 import { PlayerBar } from './PlayerBar.jsx';
 import { PlayerView } from './PlayerView.jsx';
 import { ArrowUp } from 'lucide-preact';
+import { focusSearch, isSearchShortcut } from '../utils/searchShortcut.js';
 
 export function Layout({ children, navigate, currentPage }) {
   const { t } = useI18n();
@@ -30,6 +31,23 @@ export function Layout({ children, navigate, currentPage }) {
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // Ctrl+K / ⌘K: the search of the page, else the one of the home page.
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (!isSearchShortcut(e)) return;
+      e.preventDefault();
+      if (focusSearch()) return;
+      navigate('dashboard');
+      // The home page shows its search once its data is loaded.
+      let tries = 0;
+      const timer = setInterval(() => {
+        if (focusSearch() || ++tries > 30) clearInterval(timer);
+      }, 100);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [navigate]);
 
   const toggleTheme = () => {
     setIsDark(!isDark);

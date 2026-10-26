@@ -44,6 +44,7 @@
   },
   "home": {
     "searchPlaceholder": "Rechercher un album, un artiste...",
+    "searchShortcut": "Raccourci pour rechercher",
     "recentAlbums": "Derniers ajouts",
     "randomAlbum": "Et si vous écoutiez ceci ?",
     "shuffle": "Autre album",

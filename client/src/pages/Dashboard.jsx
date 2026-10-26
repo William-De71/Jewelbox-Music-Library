@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'preact/hooks';
 import { albumsApi } from '../api/albums.js';
+import { isMac } from '../utils/searchShortcut.js';
 import { useI18n } from '../config/i18n/index.jsx';
 import { Home, Search, Music2, Shuffle, Clock, BarChart3, Settings, Plus, Heart, PenLine, Disc, User, Database } from 'lucide-preact';
 
@@ -35,7 +36,7 @@ export function Dashboard({ navigate }) {
 
       const [recentData, recentWantedData, countData, countWantedData, lentData] = await Promise.all([
         albumsApi.getAll({ sort: 'created_at', order: 'desc', limit: 10, wanted: 'false' }),
-        albumsApi.getAll({ sort: 'created_at', order: 'desc', limit: 5, wanted: 'true' }),
+        albumsApi.getAll({ sort: 'created_at', order: 'desc', limit: 10, wanted: 'true' }),
         albumsApi.getAll({ limit: 1, wanted: 'false' }),
         albumsApi.getAll({ limit: 1, wanted: 'true' }),
         albumsApi.getAll({ lent: 'true', limit: 50 }),
@@ -138,9 +139,13 @@ export function Dashboard({ navigate }) {
                       type="text"
                       class="form-control"
                       placeholder={t('home.searchPlaceholder')}
+                      data-search-shortcut
                       value={searchQuery}
                       onInput={(e) => setSearchQuery(e.target.value)}
                     />
+                    <span class="input-group-text bg-transparent d-none d-md-flex" title={t('home.searchShortcut')}>
+                      <kbd>{isMac() ? '⌘K' : 'Ctrl+K'}</kbd>
+                    </span>
                     <button class="btn btn-primary" type="submit">
                       {t('common.search')}
                     </button>

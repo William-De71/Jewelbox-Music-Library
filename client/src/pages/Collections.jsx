@@ -323,6 +323,7 @@ export function Collections({ navigate, params = {} }) {
                         type="text"
                         class="form-control"
                         placeholder={t('dashboard.searchPlaceholder')}
+                        data-search-shortcut
                         ref={searchRef}
                         value={filters.search || ''}
                         onKeyPress={handleSearch}
