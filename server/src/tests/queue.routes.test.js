@@ -209,6 +209,22 @@ describe('PATCH /player/queue/state', () => {
     expect(body.tracks).toHaveLength(2);
   });
 
+  it('keeps updated_at when an idle player repeats its index and position', async () => {
+    await call('PUT', '/player/queue', { track_ids: [trackIds[0], trackIds[1]], current_index: 0, position_sec: 30 });
+    testDb.prepare("UPDATE player_queue_state SET updated_at = '2026-01-01 10:00:00'").run();
+    const updatedAt = async () => (await call('GET', '/player/queue')).json().updated_at;
+
+    await call('PATCH', '/player/queue/state', { current_index: 0, position_sec: 30.4, playback_state: 'paused' });
+    expect(await updatedAt()).toBe('2026-01-01 10:00:00');
+
+    await call('PATCH', '/player/queue/state', { current_index: 0, position_sec: 45 });
+    expect(await updatedAt()).not.toBe('2026-01-01 10:00:00');
+
+    testDb.prepare("UPDATE player_queue_state SET updated_at = '2026-01-01 10:00:00'").run();
+    await call('PATCH', '/player/queue/state', { current_index: 1, position_sec: 45 });
+    expect(await updatedAt()).not.toBe('2026-01-01 10:00:00');
+  });
+
   it('rejects malformed values', async () => {
     expect((await call('PATCH', '/player/queue/state', { current_index: 1.5 })).statusCode).toBe(400);
     expect((await call('PATCH', '/player/queue/state', { position_sec: 'x' })).statusCode).toBe(400);

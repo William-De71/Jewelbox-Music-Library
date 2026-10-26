@@ -672,8 +672,20 @@ export function saveQueue(deviceId, trackIds, { currentIndex, positionSec, label
   return getQueue(deviceId);
 }
 
+// A player sitting idle (opened, paused) still reports its live state, with
+// the saved index and position: that must not look like fresh listening, or
+// the other devices would offer to resume it again ("most recent queue").
+const SAME_POSITION_SEC = 1;
+
 export function updateQueueState(deviceId, { currentIndex, positionSec } = {}) {
   const db = getDb();
+  const saved = db
+    .prepare('SELECT current_index, position_sec FROM player_queue_state WHERE device_id = ?')
+    .get(deviceId);
+  const unchanged = saved
+    && (currentIndex == null || currentIndex === saved.current_index)
+    && (positionSec == null || Math.abs(positionSec - saved.position_sec) < SAME_POSITION_SEC);
+  if (unchanged) return true;
   touchQueueState(db, deviceId, { currentIndex, positionSec });
   return true;
 }

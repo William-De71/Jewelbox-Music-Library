@@ -30,6 +30,10 @@ export function buildQueue(album) {
     }));
 }
 
+// Dynamic mix: how many tracks behind the current one stay in the queue
+// before they are consumed (see trimDynamicMix).
+export const MIX_KEEP_BEHIND = 4;
+
 // Fisher-Yates on a copy
 function shuffled(arr) {
   const out = [...arr];
@@ -166,17 +170,27 @@ export function PlayerProvider({ children }) {
     playAt(q, 0);
   }, [playAt]);
 
-  // Mirrors a server-side dynamic mix update locally: drops `removedId` from
+  // Mirrors a server-side dynamic mix update locally: drops `removedIds` from
   // the queue and appends the server's replacements at the bottom.
-  const syncDynamicQueue = (removedId, serverTracks) => {
-    const kept = queueRef.current.filter(t => t.id !== removedId);
+  const syncDynamicQueue = (removedIds, serverTracks) => {
+    const removed = new Set(removedIds);
+    const kept = queueRef.current.filter(t => !removed.has(t.id));
     const keptIds = new Set(kept.map(t => t.id));
     const appended = (serverTracks || []).filter(t => t.has_file !== false && !keptIds.has(t.id));
     originalQueueRef.current = [
-      ...originalQueueRef.current.filter(t => t.id !== removedId),
+      ...originalQueueRef.current.filter(t => !removed.has(t.id)),
       ...appended,
     ];
     return { kept, appended, newQueue: [...kept, ...appended] };
+  };
+
+  // Swaps in an updated queue while the same track keeps playing.
+  const followQueue = (playingId, newQueue) => {
+    const newIndex = Math.max(0, newQueue.findIndex(t => t.id === playingId));
+    queueRef.current = newQueue;
+    indexRef.current = newIndex;
+    setQueue(newQueue);
+    setIndex(newIndex);
   };
 
   // Dynamic mix: a fully played track leaves the server-side list; mirror
@@ -187,21 +201,45 @@ export function PlayerProvider({ children }) {
       .then((res) => {
         if (!dynamicMixRef.current) return; // another queue took over meanwhile
         const q = queueRef.current;
-        const { kept, appended, newQueue } = syncDynamicQueue(endedId, res.tracks);
+        const { kept, appended, newQueue } = syncDynamicQueue([endedId], res.tracks);
         if (!newQueue.length) return;
         if (resume) {
           if (appended.length) playAt(newQueue, kept.length);
         } else {
-          const playingId = q[indexRef.current]?.id;
-          const newIndex = Math.max(0, newQueue.findIndex(t => t.id === playingId));
-          queueRef.current = newQueue;
-          indexRef.current = newIndex;
-          setQueue(newQueue);
-          setIndex(newIndex);
+          followQueue(q[indexRef.current]?.id, newQueue);
         }
       })
       .catch(() => {}); // offline: the local queue simply keeps the track
   }, [playAt]);
+
+  // Dynamic mix: a skipped track stays in the list, only a track played
+  // through is consumed. So that skipping never runs the mix dry, reaching
+  // the track MIX_KEEP_BEHIND + 1 consumes the ones before it: the current
+  // track is back on top and the server refills the bottom. Until then,
+  // "previous" can still go back.
+  const trimmingMixRef = useRef(false);
+  const trimDynamicMix = useCallback(async () => {
+    const i = indexRef.current;
+    if (!dynamicMixRef.current || trimmingMixRef.current || i < MIX_KEEP_BEHIND) return;
+    const ids = queueRef.current.slice(0, i).map(t => t.id);
+    trimmingMixRef.current = true;
+    const consumed = [];
+    let res = null;
+    try {
+      for (const id of ids) {
+        res = await api.dynamicMixPlayed(id);
+        consumed.push(id);
+      }
+    } catch {
+      // offline: keep what the server did consume
+    } finally {
+      trimmingMixRef.current = false;
+    }
+    if (!res || !dynamicMixRef.current) return;
+    const playingId = queueRef.current[indexRef.current]?.id;
+    const { newQueue } = syncDynamicQueue(consumed, res.tracks);
+    if (newQueue.length) followQueue(playingId, newQueue);
+  }, []);
 
   // Manual removal of a disliked track from the dynamic mix. When the mix is
   // playing, the queue follows; removing the current track skips to the next.
@@ -212,18 +250,13 @@ export function PlayerProvider({ children }) {
       const q = queueRef.current;
       const i = indexRef.current;
       const wasCurrent = q[i]?.id === trackId;
-      const { newQueue } = syncDynamicQueue(trackId, res.tracks);
+      const { newQueue } = syncDynamicQueue([trackId], res.tracks);
       if (!newQueue.length) {
         close();
       } else if (wasCurrent) {
         playAt(newQueue, Math.min(i, newQueue.length - 1));
       } else {
-        const playingId = q[i]?.id;
-        const newIndex = Math.max(0, newQueue.findIndex(t => t.id === playingId));
-        queueRef.current = newQueue;
-        indexRef.current = newIndex;
-        setQueue(newQueue);
-        setIndex(newIndex);
+        followQueue(q[i]?.id, newQueue);
       }
     }
     return res.tracks;
@@ -482,6 +515,8 @@ export function PlayerProvider({ children }) {
     const audio = audioRef.current;
     if (audio) audio.muted = muted;
   }, [muted]);
+
+  useEffect(() => { trimDynamicMix(); }, [index, dynamicMix, trimDynamicMix]);
 
   // Starts something the remote controller picked: media is { type, id } as
   // the server validated it (see server/src/utils/remote.js MEDIA_TYPES).

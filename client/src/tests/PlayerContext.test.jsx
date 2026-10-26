@@ -287,3 +287,47 @@ describe('PlayerContext queue editing', () => {
     expect(player.current).toBeNull();
   });
 });
+
+describe('PlayerContext dynamic mix', () => {
+  const mixTrack = (id) => ({ ...TRACKS[0], id, title: `T${id}` });
+
+  it('consumes the skipped tracks once the 5th one is reached', async () => {
+    const { api } = await import('../api/client.js');
+    // The server drops each consumed track and tops the list back up to 8.
+    let server = [1, 2, 3, 4, 5, 6, 7, 8];
+    let next = 9;
+    api.dynamicMixPlayed.mockImplementation((id) => {
+      server = [...server.filter(t => t !== id), next++];
+      return Promise.resolve({ tracks: server.map(mixTrack) });
+    });
+    api.dynamicMixPlayed.mockClear();
+
+    let player;
+    harness((p) => { player = p; });
+    await act(async () => { player.playTracks(server.map(mixTrack), 0, { dynamic: true }); });
+
+    for (let n = 0; n < 3; n++) await act(async () => { player.next(); });
+    expect(api.dynamicMixPlayed).not.toHaveBeenCalled();
+    expect(player.index).toBe(3);
+
+    // The consumption chains a request per track: let them all settle.
+    await act(async () => { player.next(); });
+    await act(async () => { await new Promise(r => setTimeout(r, 20)); });
+    expect(api.dynamicMixPlayed.mock.calls.map(([id]) => id)).toEqual([1, 2, 3, 4]);
+    expect(player.index).toBe(0);
+    expect(player.queue.map(t => t.id)).toEqual([5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(fakeAudio.src).toContain('/tracks/5/stream');
+    api.dynamicMixPlayed.mockImplementation(() => Promise.resolve({ tracks: [] }));
+  });
+
+  it('leaves an ordinary queue alone', async () => {
+    const { api } = await import('../api/client.js');
+    api.dynamicMixPlayed.mockClear();
+    let player;
+    harness((p) => { player = p; });
+    await act(async () => { player.playTracks([1, 2, 3, 4, 5, 6].map(mixTrack), 0); });
+    for (let n = 0; n < 5; n++) await act(async () => { player.next(); });
+    expect(player.index).toBe(5);
+    expect(api.dynamicMixPlayed).not.toHaveBeenCalled();
+  });
+});
