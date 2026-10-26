@@ -34,7 +34,7 @@ export function Dashboard({ navigate }) {
       if (!db) return;
 
       const [recentData, recentWantedData, countData, countWantedData, lentData] = await Promise.all([
-        albumsApi.getAll({ sort: 'created_at', order: 'desc', limit: 5, wanted: 'false' }),
+        albumsApi.getAll({ sort: 'created_at', order: 'desc', limit: 10, wanted: 'false' }),
         albumsApi.getAll({ sort: 'created_at', order: 'desc', limit: 5, wanted: 'true' }),
         albumsApi.getAll({ limit: 1, wanted: 'false' }),
         albumsApi.getAll({ limit: 1, wanted: 'true' }),

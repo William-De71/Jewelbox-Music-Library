@@ -500,6 +500,27 @@ describe('PATCH /albums/:id with tracks', () => {
     expect(res.statusCode).toBe(200);
   });
 
+  it('dates an album leaving the wish list as a new addition', async () => {
+    const created = await app.inject({
+      method: 'POST', url: '/albums',
+      payload: { title: 'Wished', artist_name: 'Test Artist', is_wanted: true },
+    });
+    const id = created.json().id;
+    testDb.prepare("UPDATE albums SET created_at = '2020-01-01 00:00:00' WHERE id = ?").run(id);
+    const createdAt = () => testDb.prepare('SELECT created_at FROM albums WHERE id = ?').get(id).created_at;
+
+    await app.inject({ method: 'PATCH', url: `/albums/${id}`, payload: { notes: 'still wanted', is_wanted: true } });
+    expect(createdAt()).toBe('2020-01-01 00:00:00');
+
+    await app.inject({ method: 'PATCH', url: `/albums/${id}`, payload: { is_wanted: false } });
+    expect(createdAt()).not.toBe('2020-01-01 00:00:00');
+
+    // Already in the collection: an edit keeps its date.
+    testDb.prepare("UPDATE albums SET created_at = '2020-01-01 00:00:00' WHERE id = ?").run(id);
+    await app.inject({ method: 'PATCH', url: `/albums/${id}`, payload: { is_wanted: false, notes: 'edit' } });
+    expect(createdAt()).toBe('2020-01-01 00:00:00');
+  });
+
   it('returns 409 when updating EAN to an already existing one', async () => {
     const created = await app.inject({
       method: 'POST',

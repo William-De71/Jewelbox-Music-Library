@@ -173,7 +173,7 @@ export function createAlbum(data) {
 
 export function updateAlbum(id, data) {
   const db = getDb();
-  const existing = db.prepare('SELECT id FROM albums WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT id, is_wanted FROM albums WHERE id = ?').get(id);
   if (!existing) return null;
 
   const artist_id = data.artist_name ? upsertArtist(data.artist_name) : undefined;
@@ -197,6 +197,11 @@ export function updateAlbum(id, data) {
   }
   if (artist_id !== undefined) { fields.push('artist_id = ?'); params.push(artist_id); }
   if (label_id !== undefined) { fields.push('label_id = ?'); params.push(label_id); }
+  // A wish list album just bought joins the collection today: it is a new
+  // addition ("latest added" sorts on created_at), not an old entry.
+  if (existing.is_wanted && 'is_wanted' in data && !data.is_wanted) {
+    fields.push("created_at = datetime('now')");
+  }
   fields.push("updated_at = datetime('now')");
   params.push(id);
 
