@@ -3,7 +3,8 @@ import { databasesApi } from '../api/databases.js';
 import { useI18n } from '../config/i18n/index.jsx';
 import { api } from '../api/client.js';
 import { FolderPickerModal } from '../components/FolderPickerModal.jsx';
-import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music, Radio } from 'lucide-preact';
+import { isRemoteControlEnabled, setRemoteControlEnabled } from '../utils/remoteControl.js';
+import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music, Radio, Cast } from 'lucide-preact';
 
 export function Settings({ navigate }) {
   const { t } = useI18n();
@@ -19,6 +20,7 @@ export function Settings({ navigate }) {
   const [discogsForm, setDiscogsForm] = useState({ discogs_key: '', discogs_secret: '' });
   const [discogsSaving, setDiscogsSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [remoteControl, setRemoteControl] = useState(isRemoteControlEnabled);
   const [musicPath, setMusicPath] = useState('');
   const [musicPathSaving, setMusicPathSaving] = useState(false);
   const [browsingLibrary, setBrowsingLibrary] = useState(false);
@@ -564,6 +566,36 @@ export function Settings({ navigate }) {
                     )}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Remote control section (per browser) */}
+        <div class="row mt-4">
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title fs-5 mb-0">
+                  <Cast size={18} class="me-2" />
+                  {t('remoteControl.title')}
+                </h3>
+              </div>
+              <div class="card-body">
+                <p class="text-muted small mb-3">{t('remoteControl.description')}</p>
+                <label class="form-check form-switch mb-2">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    checked={remoteControl}
+                    onChange={(e) => {
+                      setRemoteControl(e.currentTarget.checked);
+                      setRemoteControlEnabled(e.currentTarget.checked);
+                    }}
+                  />
+                  <span class="form-check-label">{t('remoteControl.label')}</span>
+                </label>
+                <p class="text-muted small mb-0">{t('remoteControl.autoplay')}</p>
               </div>
             </div>
           </div>

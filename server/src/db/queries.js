@@ -425,6 +425,27 @@ export function mapQueueTrack(row, i) {
   };
 }
 
+// The track a player reports it is on, for the remote control list: the
+// queue shape without the queue position. Null for an unknown id.
+export function getLiveTrack(trackId) {
+  const row = getDb().prepare(`
+    SELECT ${QUEUE_TRACK_FIELDS}
+    FROM tracks t
+    JOIN albums a ON a.id = t.album_id
+    JOIN artists ar ON ar.id = a.artist_id
+    WHERE t.id = ?
+  `).get(trackId);
+  if (!row) return null;
+  const { position, ...track } = mapQueueTrack(row, 0);
+  return track;
+}
+
+export function getQueueDeviceLabel(deviceId) {
+  return getDb()
+    .prepare('SELECT device_label FROM player_queue_state WHERE device_id = ?')
+    .get(deviceId)?.device_label ?? null;
+}
+
 // Track-title search for the player's search screen: owned albums only,
 // capped rather than paginated — the client asks the user to refine instead.
 export function searchTracks(search, limit = 100) {

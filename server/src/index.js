@@ -15,6 +15,7 @@ import { lastfmRoutes, dropStaleSession } from './routes/lastfm.js';
 import { isLastfmAvailable } from './utils/lastfmCredentials.js';
 import { getBrowseRoots, resolveInRoots, listDirectory, parentWithinRoots } from './utils/fsBrowser.js';
 import { smartPlaylistRoutes } from './routes/smartPlaylists.js';
+import { remoteRoutes } from './routes/remote.js';
 import { createDatabase, setActiveDatabase, deleteDatabase } from './db/manager.js';
 import { advertise, stopAdvertising, serviceName } from './utils/mdns.js';
 import { randomUUID } from 'crypto';
@@ -87,6 +88,9 @@ await fastify.register(lastfmRoutes, { prefix: '/api' });
 
 // Register smart playlist routes
 await fastify.register(smartPlaylistRoutes, { prefix: '/api' });
+
+// Register remote control routes (Gladys, other players)
+await fastify.register(remoteRoutes, { prefix: '/api' });
 
 // Register version routes
 await fastify.register(versionRoutes);

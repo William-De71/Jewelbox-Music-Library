@@ -2,6 +2,13 @@ import { createContext } from 'preact';
 import { useState, useEffect, useRef, useContext, useCallback } from 'preact/hooks';
 import { api } from '../api/client.js';
 import { getDeviceLabel } from '../utils/deviceId.js';
+import {
+  createLiveReporter,
+  isRemoteControlEnabled,
+  liveStateOf,
+  remoteEventsUrl,
+  runCommand,
+} from '../utils/remoteControl.js';
 
 const PlayerContext = createContext(null);
 
@@ -50,6 +57,8 @@ export function PlayerProvider({ children }) {
     return ['off', 'all', 'one'].includes(saved) ? saved : 'off';
   });
   const [shuffle, setShuffle] = useState(() => localStorage.getItem('jewelbox-shuffle') === '1');
+  // No mute button here: only a remote controller (Gladys) mutes.
+  const [muted, setMuted] = useState(false);
   const [dynamicMix, setDynamicMix] = useState(false);
 
   const queueRef = useRef(queue);
@@ -307,6 +316,22 @@ export function PlayerProvider({ children }) {
     if (audio && Number.isFinite(seconds)) audio.currentTime = seconds;
   }, []);
 
+  const play = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio && indexRef.current >= 0 && audio.paused) audio.play().catch(() => setPlaying(false));
+  }, []);
+
+  const pause = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio && !audio.paused) audio.pause();
+  }, []);
+
+  const setRepeatMode = useCallback((mode) => {
+    repeatRef.current = mode;
+    setRepeat(mode);
+    localStorage.setItem('jewelbox-repeat', mode);
+  }, []);
+
   const cycleRepeat = useCallback(() => {
     setRepeat((r) => {
       const nextMode = { off: 'all', all: 'one', one: 'off' }[r];
@@ -453,6 +478,34 @@ export function PlayerProvider({ children }) {
     if (audio) audio.volume = volume;
   }, [volume]);
 
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) audio.muted = muted;
+  }, [muted]);
+
+  // Starts something the remote controller picked: media is { type, id } as
+  // the server validated it (see server/src/utils/remote.js MEDIA_TYPES).
+  const playMedia = useCallback(async ({ type, id }, mode) => {
+    let tracks;
+    if (type === 'album') {
+      tracks = buildQueue(await api.getAlbum(id));
+    } else if (type === 'playlist') {
+      tracks = (await api.getPlaylist(id)).tracks;
+    } else if (type === 'smart') {
+      if (id === 'dynamic_mix' && mode === 'replace') return playDynamicMix();
+      tracks = (await api.getSmartPlaylist(id)).tracks;
+    } else if (type === 'track') {
+      tracks = [await api.getTrack(id)];
+    } else if (type === 'album_radio' || type === 'artist_radio') {
+      tracks = (await api.getRadio(type === 'album_radio' ? { album_id: id } : { artist_id: id })).tracks;
+    } else {
+      return undefined;
+    }
+    // Nothing loaded: "play next" or "add to queue" starts the queue.
+    if (mode === 'replace' || indexRef.current < 0) return playTracks(tracks, 0);
+    return mode === 'next' ? playNext(tracks) : addToQueue(tracks);
+  }, [playTracks, playDynamicMix, playNext, addToQueue]);
+
   // Restore the queue this device left behind. Deliberately does not call
   // playAt: browsers block autoplay anyway, and resuming audio on page load
   // without a gesture would be obnoxious. The track is armed, paused, at the
@@ -598,15 +651,60 @@ export function PlayerProvider({ children }) {
     return () => document.body.classList.remove('player-open');
   }, [current]);
 
+  // ── Remote control ──────────────────────────────────────────────────────────
+  // Live state reports (always) and the command stream (when allowed), see
+  // utils/remoteControl.js. Both best-effort, like the queue sync.
+  const reporterRef = useRef(null);
+  if (!reporterRef.current) reporterRef.current = createLiveReporter();
+  // Bumped when the stream opens: the report effect runs again at once.
+  const [reportTick, setReportTick] = useState(0);
+
+  useEffect(() => {
+    const live = liveStateOf({ current, index, playing, currentTime, duration, volume, muted, shuffle, repeat });
+    if (reporterRef.current.update(live, Date.now())) {
+      api.reportLiveState({ ...live, device_label: getDeviceLabel() }).catch(() => {});
+    }
+  }, [current, index, playing, currentTime, duration, volume, muted, shuffle, repeat, reportTick]);
+
+  // The commands read the latest player through this ref: the stream is
+  // opened once, not on every render.
+  const remoteRef = useRef(null);
+
+  const [remoteAllowed, setRemoteAllowed] = useState(isRemoteControlEnabled);
+  useEffect(() => {
+    const onChange = (event) => setRemoteAllowed(Boolean(event.detail));
+    window.addEventListener('jewelbox-remote-control', onChange);
+    return () => window.removeEventListener('jewelbox-remote-control', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!remoteAllowed || typeof EventSource === 'undefined') return undefined;
+    // EventSource reconnects by itself (retry: sent by the server).
+    const source = new EventSource(remoteEventsUrl());
+    source.addEventListener('hello', () => {
+      // The controller just saw this player appear: tell it where playback is.
+      reporterRef.current.forget();
+      setReportTick(t => t + 1);
+    });
+    source.addEventListener('command', (event) => {
+      try {
+        Promise.resolve(runCommand(remoteRef.current, JSON.parse(event.data))).catch(() => {});
+      } catch { /* a malformed command is dropped */ }
+    });
+    return () => source.close();
+  }, [remoteAllowed]);
+
   const value = {
     queue, index, current, playing, currentTime, duration, volume, expanded,
-    repeat, shuffle, dynamicMix,
+    repeat, shuffle, dynamicMix, muted,
     playTracks, playAlbum, playAlbumById, playDynamicMix,
     removeDynamicMixTrack, refreshDynamicMix,
     toggle, next, prev, seek, setVolume, close, setExpanded, jumpTo,
     cycleRepeat, toggleShuffle, toggleFavorite,
     addToQueue, playNext, removeFromQueue, moveInQueue, clearQueue,
+    play, pause, setMuted, setRepeatMode, playMedia,
   };
+  remoteRef.current = value;
 
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }

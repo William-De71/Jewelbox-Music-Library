@@ -118,6 +118,12 @@ export const api = {
     }),
   updateQueueState: (currentIndex, positionSec) =>
     request('PATCH', '/player/queue/state', { current_index: currentIndex, position_sec: positionSec }),
+  // Live state for the remote control (server >= 1.18; older ones keep the
+  // position and ignore the rest).
+  reportLiveState: (state) => request('PATCH', '/player/queue/state', state),
+  getTrack: (id) => request('GET', `/player/tracks/${id}`),
+  getRadio: ({ album_id, artist_id }) =>
+    request('GET', `/player/radio?${album_id != null ? `album_id=${album_id}` : `artist_id=${artist_id}`}`),
   queueAdd: (payload) => request('POST', '/player/queue/tracks', payload),
   queueRemove: (entryId) => request('DELETE', `/player/queue/tracks/${entryId}`),
   queueClear: () => request('DELETE', '/player/queue'),

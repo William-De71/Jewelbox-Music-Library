@@ -232,7 +232,6 @@
     "confirmDelete": "Voulez-vous vraiment supprimer l'album",
     "deleteSuccess": "L'album a été supprimé avec succès."
   },
-  
   "menu": {
     "dashboard": "Tableau de bord",
     "collections": "Collections",
@@ -505,6 +504,12 @@
     "disconnect": "Déconnecter",
     "disconnected": "Compte Last.fm déconnecté",
     "connectError": "La connexion à Last.fm a échoué. Veuillez réessayer."
+  },
+  "remoteControl": {
+    "title": "Contrôle à distance",
+    "description": "Un autre client du serveur, comme Gladys, peut piloter le lecteur de ce navigateur : lecture, pause, piste suivante, volume, lancer un album. Le réglage vaut pour ce navigateur seulement.",
+    "label": "Autoriser le contrôle à distance",
+    "autoplay": "Le navigateur peut refuser de lancer le son tant que vous n'avez pas joué un morceau vous-même dans cet onglet."
   },
   "about": {
     "title": "À propos de JewelBox",

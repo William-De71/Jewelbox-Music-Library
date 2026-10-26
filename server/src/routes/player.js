@@ -23,9 +23,13 @@ import {
   removeFromQueue,
   clearQueue,
   listQueueDevices,
+  getQueueDeviceLabel,
+  getLiveTrack,
   getTrackIdsForAlbum,
   trackExists,
 } from '../db/queries.js';
+import { parseLiveState } from '../utils/remote.js';
+import { remote } from './remote.js';
 
 // Resolves a library-relative path and guarantees it stays inside the library root.
 function resolveInLibrary(libRoot, relPath) {
@@ -100,6 +104,18 @@ export async function playerRoutes(fastify) {
       if (!fs.existsSync(abs)) return reply.code(404).send({ error: 'File not found' });
 
       return reply.sendFile(path.relative(libRoot, abs), libRoot);
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // One track in the queue shape, for a remote "play this track" (the
+  // players start it like a one-track playlist).
+  fastify.get('/player/tracks/:id', async (req, reply) => {
+    try {
+      const track = getLiveTrack(Number(req.params.id));
+      if (!track) return reply.code(404).send({ error: 'Track not found' });
+      return track;
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }
@@ -198,12 +214,15 @@ export async function playerRoutes(fastify) {
 
   // Lightweight progress ping. The client throttles this: writing on every
   // timeupdate (~4 Hz) would hammer SQLite for no benefit.
+  // With playback_state (and track_id, volume, muted, shuffle, repeat…) it is
+  // also the live state of the player, sent at once on every change: kept in
+  // memory for the remote control (utils/remote.js), never in SQLite.
   fastify.patch('/player/queue/state', async (req, reply) => {
     try {
       const device = requireDeviceId(req, reply);
       if (!device) return reply;
 
-      const { current_index, position_sec } = req.body ?? {};
+      const { current_index, position_sec, device_label } = req.body ?? {};
       if (current_index != null && !Number.isInteger(current_index)) {
         return reply.code(400).send({ error: 'current_index must be an integer' });
       }
@@ -211,6 +230,11 @@ export async function playerRoutes(fastify) {
         return reply.code(400).send({ error: 'position_sec must be a number' });
       }
       updateQueueState(device, { currentIndex: current_index, positionSec: position_sec });
+      const live = parseLiveState(req.body);
+      if (live) {
+        const label = device_label ? String(device_label).slice(0, 64) : getQueueDeviceLabel(device);
+        remote.report(device, live, { label });
+      }
       return reply.code(204).send();
     } catch (err) {
       return reply.code(500).send({ error: err.message });
