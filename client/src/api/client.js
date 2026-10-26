@@ -144,4 +144,6 @@ export const api = {
 
   // Version
   getVersion: () => request('GET', '/version'),
+  getUpdate: (refresh = false) => request('GET', `/update${refresh ? '?refresh=1' : ''}`),
+  applyUpdate: () => request('POST', '/update'),
 };

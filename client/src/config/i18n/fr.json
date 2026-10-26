@@ -518,5 +518,20 @@
     "credits": "Développé avec",
     "by": "par",
     "githubTitle": "Voir sur GitHub"
+  },
+  "update": {
+    "available": "v{version} disponible",
+    "toastTitle": "JewelBox v{version} est disponible",
+    "toastBody": "Vous utilisez la v{current}.",
+    "see": "Voir",
+    "title": "JewelBox v{version}",
+    "current": "Version actuelle : v{current}",
+    "seeOnGithub": "Voir sur GitHub",
+    "updateNow": "Mettre à jour maintenant",
+    "updating": "Mise à jour en cours… JewelBox redémarre, la page se rechargera toute seule.",
+    "timeout": "Toujours pas de nouvelle version après 5 minutes : regardez les journaux de Watchtower.",
+    "manual": "Pour mettre à jour, sur le serveur :",
+    "enableWatchtower": "Pour un bouton de mise à jour ici, activez Watchtower (voir le README).",
+    "fixedTag": "L'image suit une version fixe ({tag}) : changez JEWELBOX_TAG pour passer à la nouvelle."
   }
 }

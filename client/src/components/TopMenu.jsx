@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import { Home, Disc, Heart, ArrowRightLeft, BarChart3, Settings, Info, Menu, X, ListMusic } from 'lucide-preact';
 import { useI18n } from '../config/i18n/index.jsx';
+import { UpdateNotice } from './UpdateNotice.jsx';
 import '../styles/topmenu.css';
 
 export function TopMenu({ currentPage, navigate }) {
@@ -88,6 +89,7 @@ export function TopMenu({ currentPage, navigate }) {
           </li>
         </ul>
         <ul class="navbar-nav ms-auto">
+          <UpdateNotice />
           <li class="nav-item">
             <a 
               class={`nav-link ${currentPage === 'settings' ? 'active' : ''}`}

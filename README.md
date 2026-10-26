@@ -153,11 +153,29 @@ serveur reste joignable normalement par son adresse IP.
 
 ```bash
 cd docker
+cp .env.example .env   # facultatif : tag de l'image, Last.fm, Watchtower
 docker compose up -d
 ```
 
 L'application est accessible sur [http://localhost:3001](http://localhost:3001).
 Les bases de données et les pochettes sont persistées dans le volume `jewelbox_data`.
+
+- L'image est celle des releases (`willde71/jewelbox-music-library`), au tag `JEWELBOX_TAG` (`latest` par défaut, ou `v1.18.1`, `v1.18`, `v1`).
+- Mise à jour : `docker compose pull && docker compose up -d`, ou le bouton **Mettre à jour maintenant** (voir ci-dessous).
+- Construire depuis les sources : `docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`.
+
+### Mise à jour depuis l'interface
+
+JewelBox vérifie les releases GitHub : quand une nouvelle version sort, une notification apparaît une fois et un lien « vX.Y.Z disponible » s'affiche dans le menu, avec les notes de version. Pour avoir aussi le bouton **Mettre à jour maintenant**, activez [Watchtower](https://github.com/nicholas-fedor/watchtower) dans `docker/.env` :
+
+```bash
+COMPOSE_PROFILES=updater
+WATCHTOWER_TOKEN=...   # un jeton secret, par exemple : openssl rand -hex 32
+```
+
+puis `docker compose up -d`. Watchtower n'agit que sur demande (pas de vérification périodique) et uniquement sur le conteneur JewelBox ; c'est lui, et non JewelBox, qui a accès au socket Docker. Le bouton n'apparaît pas si `JEWELBOX_TAG` est une version fixe (`v1.18.1`).
+
+> **Avec `network_mode: host`** (mDNS), le nom `watchtower` n'est pas résolu : publiez le port de Watchtower (`ports: ["127.0.0.1:8080:8080"]` sur le service `watchtower`) et mettez `UPDATER_URL=http://localhost:8080` dans `.env`.
 
 ### Sans Docker Compose (Docker seul)
 

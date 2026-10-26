@@ -9,6 +9,7 @@ import Database from 'better-sqlite3';
 import { albumRoutes } from './routes/albums.js';
 import { searchRoutes } from './routes/search.js';
 import { versionRoutes, APP_VERSION } from './routes/version.js';
+import { updateRoutes } from './routes/update.js';
 import { playerRoutes } from './routes/player.js';
 import { playlistRoutes } from './routes/playlists.js';
 import { lastfmRoutes, dropStaleSession } from './routes/lastfm.js';
@@ -94,6 +95,9 @@ await fastify.register(remoteRoutes, { prefix: '/api' });
 
 // Register version routes
 await fastify.register(versionRoutes);
+
+// New releases and the "update now" button (Watchtower)
+await fastify.register(updateRoutes);
 
 // Serve covers from active database folder
 fastify.get('/covers/:filename', async (req, reply) => {

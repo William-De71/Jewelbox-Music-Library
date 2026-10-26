@@ -1,0 +1,9 @@
+# Build JewelBox from the sources instead of pulling the release image:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+# (the "update now" button then has nothing to pull: leave Watchtower off).
+services:
+  jewelbox:
+    image: jewelbox:local
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile

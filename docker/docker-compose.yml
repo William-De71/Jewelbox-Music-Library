@@ -2,9 +2,9 @@ version: '3.9'
 
 services:
   jewelbox:
-    build:
-      context: ..
-      dockerfile: docker/Dockerfile
+    # Release image (Docker Hub). To build from the sources instead:
+    #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+    image: willde71/jewelbox-music-library:${JEWELBOX_TAG:-latest}
     container_name: jewelbox-app
     ports:
       - "3001:3001"
@@ -23,6 +23,12 @@ services:
       # Optional: use your own Last.fm application instead of the built-in key
       LASTFM_API_KEY: ${LASTFM_API_KEY:-}
       LASTFM_API_SECRET: ${LASTFM_API_SECRET:-}
+      # "Update now" button: JewelBox asks Watchtower to pull and recreate it.
+      IMAGE_TAG: ${JEWELBOX_TAG:-latest}
+      UPDATER_URL: ${UPDATER_URL:-http://watchtower:8080}
+      UPDATER_TOKEN: ${WATCHTOWER_TOKEN:-}
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/health"]
@@ -30,6 +36,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  # Optional, enabled by COMPOSE_PROFILES=updater in .env. Only acts when asked
+  # through its API (no periodic polling), and only on labelled containers.
+  watchtower:
+    image: nickfedor/watchtower:1.23
+    container_name: jewelbox-watchtower
+    profiles: [updater]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_HTTP_API_ENDPOINTS: update
+      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_TOKEN:-}
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_CLEANUP: "true"
+    restart: unless-stopped
 
 volumes:
   jewelbox_data:
