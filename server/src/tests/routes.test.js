@@ -132,7 +132,7 @@ describe('GET /albums', () => {
     expect(res.json().data).toHaveLength(1);
   });
 
-  it('filters by linked audio files (none / mp3)', async () => {
+  it('filters by linked audio files (none / mp3 / flac)', async () => {
     const make = async (title) => (await app.inject({
       method: 'POST', url: '/albums', payload: { title, artist_name: 'Audio Filter' },
     })).json().id;
@@ -151,6 +151,7 @@ describe('GET /albums', () => {
 
     expect(await titles('none')).toEqual(['Audio Empty']);
     expect(await titles('mp3')).toEqual(['Audio Mixed']);
+    expect(await titles('flac')).toEqual(['Audio FLAC']);
     expect(await titles('')).toEqual(['Audio Empty', 'Audio FLAC', 'Audio Mixed']);
   });
 });

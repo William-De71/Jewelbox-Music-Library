@@ -92,12 +92,17 @@ export function getAlbums({ page = 1, limit = 24, genre, rating, sort = 'title',
   if (wanted === 'false' || wanted === false) { conditions.push('a.is_wanted = 0'); }
   if (letter) { conditions.push("UPPER(SUBSTR(ar.name, 1, 1)) = ?"); params.push(letter.toUpperCase()); }
   // Audio files linked by the scan: 'none' = no track has a file, 'mp3' = at
-  // least one track is an MP3 (the library is meant to be FLAC).
+  // least one track is an MP3 (the library is meant to be FLAC), 'flac' = every
+  // linked file is a FLAC (an album mixing both only shows under 'mp3').
   if (audio === 'none') {
     conditions.push('NOT EXISTS(SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.file_path IS NOT NULL)');
   }
   if (audio === 'mp3') {
     conditions.push("EXISTS(SELECT 1 FROM tracks t WHERE t.album_id = a.id AND LOWER(t.file_path) LIKE '%.mp3')");
+  }
+  if (audio === 'flac') {
+    conditions.push('EXISTS(SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.file_path IS NOT NULL)');
+    conditions.push("NOT EXISTS(SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.file_path IS NOT NULL AND LOWER(t.file_path) NOT LIKE '%.flac')");
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';

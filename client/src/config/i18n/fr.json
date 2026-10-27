@@ -272,7 +272,8 @@
     "allArtistsShort": "Tous",
     "audioAll": "Toute la musique",
     "audioNone": "Sans musique",
-    "audioMp3": "Avec du MP3",
+    "audioFlac": "Encodé en FLAC",
+    "audioMp3": "Encodé en MP3",
     "audioNoResults": "Aucun CD ne correspond à ce filtre."
   },
   "stats": {

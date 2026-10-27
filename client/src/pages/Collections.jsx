@@ -345,6 +345,7 @@ export function Collections({ navigate, params = {} }) {
                     <select class="form-select" value={filters.audio} onChange={(e) => setFilter('audio', e.target.value)}>
                       <option value="">{t('filters.audioAll')}</option>
                       <option value="none">{t('filters.audioNone')}</option>
+                      <option value="flac">{t('filters.audioFlac')}</option>
                       <option value="mp3">{t('filters.audioMp3')}</option>
                     </select>
                   </div>
