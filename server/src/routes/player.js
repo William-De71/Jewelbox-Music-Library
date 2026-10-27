@@ -3,6 +3,7 @@ import fs from 'fs';
 import { getMusicLibraryPath } from '../db/settings.js';
 import { parseRankingLimit } from '../db/smartPlaylists.js';
 import { getRadio, RADIO_DEFAULT_SIZE, RADIO_MAX_SIZE } from '../db/radio.js';
+import { getListeningStats, LISTENING_PERIODS } from '../db/listening.js';
 import { startScan, getScanStatus, matchManualFolder, isAudioFile } from '../utils/audioScanner.js';
 import {
   getAlbumById,
@@ -127,6 +128,20 @@ export async function playerRoutes(fastify) {
         return reply.code(404).send({ error: 'Track not found' });
       }
       return reply.code(204).send();
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Listening statistics: counters, the tops of the period (month, year or
+  // all time), plays per month and the albums never played.
+  fastify.get('/player/stats', async (req, reply) => {
+    const period = req.query?.period ?? 'month';
+    if (!LISTENING_PERIODS.includes(period)) {
+      return reply.code(400).send({ error: `period must be one of ${LISTENING_PERIODS.join(', ')}` });
+    }
+    try {
+      return getListeningStats({ period });
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }

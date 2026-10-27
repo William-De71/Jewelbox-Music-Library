@@ -412,9 +412,14 @@ export function getTrackForStream(trackId) {
 }
 
 export function markTrackPlayed(trackId) {
-  const { changes } = getDb()
-    .prepare("UPDATE tracks SET play_count = play_count + 1, last_played_at = datetime('now') WHERE id = ?")
-    .run(trackId);
+  const db = getDb();
+  let changes = 0;
+  db.transaction(() => {
+    changes = db
+      .prepare("UPDATE tracks SET play_count = play_count + 1, last_played_at = datetime('now') WHERE id = ?")
+      .run(trackId).changes;
+    if (changes) db.prepare('INSERT INTO track_plays (track_id) VALUES (?)').run(trackId);
+  })();
   return changes > 0;
 }
 

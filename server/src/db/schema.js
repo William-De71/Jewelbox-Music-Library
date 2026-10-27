@@ -80,6 +80,15 @@ export const SCHEMA = `
     track_id INTEGER NOT NULL UNIQUE REFERENCES tracks(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS track_plays (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    track_id  INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    played_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_track_plays_played_at ON track_plays(played_at);
+  CREATE INDEX IF NOT EXISTS idx_track_plays_track     ON track_plays(track_id);
+
   CREATE TABLE IF NOT EXISTS loan_history (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     album_id    INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,

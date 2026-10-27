@@ -292,6 +292,33 @@
     "topArtists": "Top artistes",
     "topLabels": "Top labels",
     "avgRating": "Note moyenne",
+    "tabCollection": "Collection",
+    "tabListening": "Mes écoutes",
+    "listening": {
+      "periods": {
+        "month": "Ce mois-ci",
+        "year": "Cette année",
+        "all": "Depuis toujours"
+      },
+      "playsToday": "Écoutes aujourd'hui",
+      "playsMonth": "Écoutes ce mois-ci",
+      "playsAll": "Écoutes en tout",
+      "listeningTime": "Temps d'écoute",
+      "albumsPlayed": "Albums écoutés",
+      "byMonth": "Écoutes par mois",
+      "topAlbums": "Albums les plus écoutés",
+      "topArtists": "Artistes les plus écoutés",
+      "topTracks": "Titres les plus écoutés",
+      "plays": "{count} écoute",
+      "playsPlural": "{count} écoutes",
+      "neverPlayed": "Jamais écoutés",
+      "neverPlayedCount": "{count} albums de la collection n'ont jamais été écoutés. En voici quelques-uns :",
+      "neverPlayedNone": "Tous les albums disponibles en audio ont été écoutés au moins une fois.",
+      "empty": "Aucune écoute sur cette période.",
+      "trackingSince": "Le détail par date commence le {date} : les écoutes d'avant ne comptent que dans le total.",
+      "trackingNone": "Le détail par date commence avec la prochaine écoute : les écoutes d'avant ne comptent que dans le total.",
+      "countRule": "Une écoute compte quand la moitié de la piste (ou 4 minutes) a été jouée."
+    },
     "noData": "Aucune donnée",
     "noActiveDb": "Aucune base de données active.",
     "error": {

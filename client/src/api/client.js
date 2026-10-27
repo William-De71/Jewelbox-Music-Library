@@ -122,6 +122,8 @@ export const api = {
   // position and ignore the rest).
   reportLiveState: (state) => request('PATCH', '/player/queue/state', state),
   getTrack: (id) => request('GET', `/player/tracks/${id}`),
+  // Listening statistics; period: 'month', 'year' or 'all'.
+  getListeningStats: (period) => request('GET', `/player/stats?period=${period}`),
   getRadio: ({ album_id, artist_id }) =>
     request('GET', `/player/radio?${album_id != null ? `album_id=${album_id}` : `artist_id=${artist_id}`}`),
   queueAdd: (payload) => request('POST', '/player/queue/tracks', payload),

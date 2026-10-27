@@ -15,6 +15,7 @@ export default defineConfig({
         'src/db/queries.js',
         'src/db/schema.js',
         'src/db/smartPlaylists.js',
+        'src/db/listening.js',
         'src/routes/albums.js',
         'src/routes/player.js',
         'src/routes/playlists.js',

@@ -297,6 +297,7 @@ npm run test:coverage --workspace=server
 | `DELETE` | `/api/player/queue/tracks/:entryId` | Retirer une entrée de la file     |
 | `DELETE` | `/api/player/queue`          | Vider la file                            |
 | `GET`    | `/api/player/queue/devices`  | Files laissées par les autres appareils  |
+| `GET`    | `/api/player/stats?period=`  | Statistiques d'écoute (`month`, `year`, `all`) |
 | `GET`    | `/api/lastfm/connect`        | URL d'autorisation Last.fm               |
 | `DELETE` | `/api/lastfm/session`        | Déconnecter le compte Last.fm            |
 | `POST`   | `/api/lastfm/nowplaying`     | Signaler la piste en cours               |

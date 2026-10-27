@@ -95,7 +95,7 @@ export function App() {
       {route.page === 'collections' && <Collections navigate={navigate} params={route.params} />}
       {route.page === 'wantlist' && <WantList navigate={navigate} params={route.params} />}
       {route.page === 'lend' && <Lend navigate={navigate} />}
-      {route.page === 'stats' && <Stats />}
+      {route.page === 'stats' && <Stats navigate={navigate} />}
       {route.page === 'settings' && <Settings navigate={navigate} />}
       {route.page === 'about' && <About />}
       {route.page === 'playlists' && <Playlists navigate={navigate} params={route.params} />}

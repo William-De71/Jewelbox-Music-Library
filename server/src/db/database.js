@@ -161,6 +161,21 @@ function runMigrations(database) {
     database.exec("ALTER TABLE player_queue_state ADD COLUMN source_label TEXT");
     console.log('[Migration] Added source_label column to player_queue_state');
   }
+  if (!tables.includes('track_plays')) {
+    // One row per counted play (the play_count rule: half the track or 4 min),
+    // for the listening statistics over time. play_count keeps the all-time
+    // total, plays from before this table included.
+    database.exec(`
+      CREATE TABLE track_plays (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        track_id  INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+        played_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX idx_track_plays_played_at ON track_plays(played_at);
+      CREATE INDEX idx_track_plays_track ON track_plays(track_id);
+    `);
+    console.log('[Migration] Created track_plays table');
+  }
   if (!tables.includes('loan_history')) {
     database.exec(`
       CREATE TABLE loan_history (

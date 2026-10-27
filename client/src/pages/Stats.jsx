@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'preact/hooks';
 import { api } from '../api/client.js';
 import { useI18n } from '../config/i18n/index.jsx';
+import { HBar, KpiCard } from '../components/StatsWidgets.jsx';
+import { ListeningStats } from '../components/ListeningStats.jsx';
 import { BarChart3, Music2, Heart, Clock, User, Star, ArrowRightLeft, Settings, Database } from 'lucide-preact';
 
 const PALETTE = [
@@ -52,39 +54,6 @@ function DonutChart({ data }) {
   );
 }
 
-function HBar({ data, color, labelWidth = 90 }) {
-  const max = Math.max(...data.map(d => d.count), 1);
-  return (
-    <div class="d-flex flex-column gap-2">
-      {data.map((item, i) => (
-        <div key={i} class="d-flex align-items-center gap-2">
-          <span class="text-end text-muted flex-shrink-0 text-truncate"
-            style={{ fontSize: '0.75rem', minWidth: labelWidth, maxWidth: labelWidth }}
-            title={item.label}>
-            {item.label}
-          </span>
-          <div class="flex-grow-1 rounded overflow-hidden" style={{ height: 16, background: 'var(--tblr-secondary-lt, #e9ecef)' }}>
-            <div style={{ width: `${(item.count / max) * 100}%`, height: '100%', background: color, borderRadius: 4, transition: 'width 0.5s ease' }} />
-          </div>
-          <span class="fw-semibold flex-shrink-0" style={{ fontSize: '0.75rem', minWidth: 20 }}>{item.count}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function KpiCard({ icon, value, label, color }) {
-  return (
-    <div class="card text-center h-100">
-      <div class="card-body py-3 px-2">
-        <div class={`text-${color} mb-1`}>{icon}</div>
-        <div class="display-6 fw-bold lh-1 mb-1">{value}</div>
-        <div class="text-muted small">{label}</div>
-      </div>
-    </div>
-  );
-}
-
 export function Stats({ navigate }) {
   const { t } = useI18n();
   const [stats, setStats] = useState(null);
@@ -92,6 +61,7 @@ export function Stats({ navigate }) {
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
   const [dbCheckComplete, setDbCheckComplete] = useState(false);
+  const [tab, setTab] = useState('collection');
 
   const showToast = (msg, type = 'danger') => {
     setToast({ msg, type });
@@ -171,8 +141,19 @@ export function Stats({ navigate }) {
                   <BarChart3 size={24} class="me-2 text-info" />
                   {t('menu.stats')}
                 </h2>
+                <ul class="nav nav-pills ms-auto" role="tablist">
+                  {['collection', 'listening'].map(key => (
+                    <li key={key} class="nav-item">
+                      <button type="button" role="tab" aria-selected={tab === key}
+                        class={`nav-link ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
+                        {t(key === 'collection' ? 'stats.tabCollection' : 'stats.tabListening')}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
               </div>
               <div class="card-body">
+                {tab === 'listening' ? <ListeningStats navigate={navigate} /> : (<>
                 {/* ── KPIs ───────────────────────────────────────────── */}
                     <div class="row g-3 mb-4">
                       <div class="col-6 col-sm-4 col-xl-2">
@@ -254,6 +235,7 @@ export function Stats({ navigate }) {
                         </div>
                       )}
                     </div>
+                </>)}
               </div>
             </div>
           </div>
