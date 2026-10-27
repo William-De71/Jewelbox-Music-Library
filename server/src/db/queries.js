@@ -411,14 +411,19 @@ export function getTrackForStream(trackId) {
   return getDb().prepare('SELECT id, file_path FROM tracks WHERE id = ?').get(trackId) || null;
 }
 
-export function markTrackPlayed(trackId) {
+// playedAt: 'YYYY-MM-DD HH:MM:SS' UTC for a play reported late (a phone
+// that played offline), now when omitted. last_played_at never goes back.
+export function markTrackPlayed(trackId, playedAt = null) {
   const db = getDb();
   let changes = 0;
   db.transaction(() => {
-    changes = db
-      .prepare("UPDATE tracks SET play_count = play_count + 1, last_played_at = datetime('now') WHERE id = ?")
-      .run(trackId).changes;
-    if (changes) db.prepare('INSERT INTO track_plays (track_id) VALUES (?)').run(trackId);
+    const at = playedAt ?? db.prepare("SELECT datetime('now') AS now").get().now;
+    changes = db.prepare(`
+      UPDATE tracks SET play_count = play_count + 1,
+        last_played_at = CASE WHEN last_played_at IS NULL OR last_played_at < ? THEN ? ELSE last_played_at END
+      WHERE id = ?
+    `).run(at, at, trackId).changes;
+    if (changes) db.prepare('INSERT INTO track_plays (track_id, played_at) VALUES (?, ?)').run(trackId, at);
   })();
   return changes > 0;
 }

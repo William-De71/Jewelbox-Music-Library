@@ -3,7 +3,7 @@ import fs from 'fs';
 import { getMusicLibraryPath } from '../db/settings.js';
 import { parseRankingLimit } from '../db/smartPlaylists.js';
 import { getRadio, RADIO_DEFAULT_SIZE, RADIO_MAX_SIZE } from '../db/radio.js';
-import { getListeningStats, LISTENING_PERIODS } from '../db/listening.js';
+import { getListeningStats, LISTENING_PERIODS, sqlUtc } from '../db/listening.js';
 import { startScan, getScanStatus, matchManualFolder, isAudioFile } from '../utils/audioScanner.js';
 import {
   getAlbumById,
@@ -122,9 +122,19 @@ export async function playerRoutes(fastify) {
     }
   });
 
+  // played_at (optional, ISO date): when the play happened, for a player
+  // that played offline and reports it on its return. Not in the future.
   fastify.post('/player/tracks/:id/played', async (req, reply) => {
+    let playedAt = null;
+    if (req.body?.played_at != null) {
+      const when = Date.parse(req.body.played_at);
+      if (typeof req.body.played_at !== 'string' || !Number.isFinite(when) || when > Date.now() + 60_000) {
+        return reply.code(400).send({ error: 'played_at must be a past ISO date' });
+      }
+      playedAt = sqlUtc(new Date(when));
+    }
     try {
-      if (!markTrackPlayed(Number(req.params.id))) {
+      if (!markTrackPlayed(Number(req.params.id), playedAt)) {
         return reply.code(404).send({ error: 'Track not found' });
       }
       return reply.code(204).send();

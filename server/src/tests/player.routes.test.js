@@ -196,6 +196,27 @@ describe('POST /player/tracks/:id/played', () => {
     const res = await app.inject({ method: 'POST', url: '/player/tracks/99999/played' });
     expect(res.statusCode).toBe(404);
   });
+
+  it('dates a play reported late, without moving last_played_at back', async () => {
+    const id = trackIds[1];
+    let res = await app.inject({
+      method: 'POST', url: `/player/tracks/${id}/played`, payload: { played_at: '2026-10-20T21:30:00+02:00' },
+    });
+    expect(res.statusCode).toBe(204);
+    expect(testDb.prepare('SELECT played_at FROM track_plays WHERE track_id = ? ORDER BY id DESC').get(id).played_at)
+      .toBe('2026-10-20 19:30:00');
+    expect(testDb.prepare('SELECT last_played_at FROM tracks WHERE id = ?').get(id).last_played_at)
+      .toBe('2026-10-20 19:30:00');
+    res = await app.inject({
+      method: 'POST', url: `/player/tracks/${id}/played`, payload: { played_at: '2026-10-01T10:00:00Z' },
+    });
+    expect(testDb.prepare('SELECT last_played_at FROM tracks WHERE id = ?').get(id).last_played_at)
+      .toBe('2026-10-20 19:30:00');
+    for (const played_at of ['yesterday', 12, new Date(Date.now() + 3600_000).toISOString()]) {
+      res = await app.inject({ method: 'POST', url: `/player/tracks/${id}/played`, payload: { played_at } });
+      expect(res.statusCode).toBe(400);
+    }
+  });
 });
 
 describe('PATCH /player/tracks/:id/favorite', () => {
