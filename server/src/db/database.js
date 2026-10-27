@@ -47,6 +47,17 @@ function runMigrations(database) {
     database.exec("ALTER TABLE tracks ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0 CHECK(is_favorite IN (0,1))");
     console.log('[Migration] Added is_favorite column to tracks');
   }
+  // ReplayGain tags of the matched file (dB / linear peak), read by the audio
+  // scan; NULL until the next scan, or when the file has no such tags.
+  if (!trackCols.includes('rg_track_gain')) {
+    database.exec(`
+      ALTER TABLE tracks ADD COLUMN rg_track_gain REAL;
+      ALTER TABLE tracks ADD COLUMN rg_track_peak REAL;
+      ALTER TABLE tracks ADD COLUMN rg_album_gain REAL;
+      ALTER TABLE tracks ADD COLUMN rg_album_peak REAL;
+    `);
+    console.log('[Migration] Added ReplayGain columns to tracks');
+  }
   const tables = database.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map(t => t.name);
   if (!tables.includes('playlists')) {
     database.exec(`

@@ -88,6 +88,10 @@ La file est enregistrée sur le serveur : elle est restaurée au rechargement de
 
 Chaque appareil possède sa propre file, identifiée par un jeton local : le navigateur du bureau et le téléphone ne s'écrasent donc jamais l'un l'autre. `GET /api/player/queue/devices` liste les files laissées par les autres appareils, de quoi reprendre sur le téléphone ce que le bureau écoutait.
 
+### Normalisation du volume (ReplayGain)
+
+L'analyse de la bibliothèque lit aussi les tags ReplayGain des fichiers (écrits par JewelBox Ripper, ou `rsgain easy` sur une bibliothèque existante) et les expose aux lecteurs (`replaygain` sur chaque piste : gains en dB, crêtes linéaires). Dans **Paramètres → Normalisation du volume**, choisissez *Par album* (défaut), *Par piste* ou *Désactivée* — réglage propre à chaque navigateur. Le gain passe par le volume du lecteur : les albums masterisés fort sont baissés, un gain positif est ignoré. Pour des fichiers déjà associés, relancez l'analyse une fois.
+
 ### Scrobbling Last.fm
 
 Aucune configuration : rendez-vous dans **Paramètres → Last.fm**, cliquez sur « Connecter mon compte Last.fm » et autorisez l'application sur last.fm — c'est tout.

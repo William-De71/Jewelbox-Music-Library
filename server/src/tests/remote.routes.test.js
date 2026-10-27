@@ -283,6 +283,7 @@ describe('remote control routes', () => {
     expect(res.json()).toEqual({
       id: trackIds[0], title: 'Airbag', duration: '4:44', has_file: true, play_count: 0, is_favorite: false,
       album_id: albumId, album_title: 'OK Computer', artist_name: 'Radiohead', cover_url: '/covers/ok.jpg',
+      replaygain: null,
     });
     expect((await app.inject({ method: 'GET', url: '/player/tracks/9999' })).statusCode).toBe(404);
   });

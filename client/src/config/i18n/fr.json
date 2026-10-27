@@ -512,6 +512,17 @@
     "label": "Autoriser le contrôle à distance",
     "autoplay": "Le navigateur peut refuser de lancer le son tant que vous n'avez pas joué un morceau vous-même dans cet onglet."
   },
+  "replayGain": {
+    "title": "Normalisation du volume",
+    "description": "D'après les tags ReplayGain des fichiers (ajoutés par JewelBox Ripper) : les albums masterisés fort sont baissés au niveau des autres. Par album, chaque disque garde ses nuances. Le réglage vaut pour ce navigateur seulement.",
+    "label": "Normalisation",
+    "modes": {
+      "off": "Désactivée",
+      "track": "Par piste",
+      "album": "Par album"
+    },
+    "hint": "Les tags sont lus pendant l'analyse de la bibliothèque musicale : relancez-la une fois pour les fichiers déjà associés."
+  },
   "about": {
     "title": "À propos de JewelBox",
     "appName": "JewelBox Music Library",

@@ -331,3 +331,41 @@ describe('PlayerContext dynamic mix', () => {
     expect(api.dynamicMixPlayed).not.toHaveBeenCalled();
   });
 });
+
+describe('PlayerContext ReplayGain', () => {
+  const tagged = [
+    { ...TRACKS[0], replaygain: { track_gain: -6.0206, track_peak: 1, album_gain: -12.0412, album_peak: 1 } },
+    { ...TRACKS[1], replaygain: null },
+  ];
+
+  it('scales the element volume by the album gain by default', async () => {
+    let player;
+    harness((p) => { player = p; });
+    await act(async () => { player.playTracks(tagged, 0); });
+    expect(fakeAudio.volume).toBeCloseTo(0.25, 3);
+
+    // An untagged track plays at the user volume.
+    await act(async () => { player.next(); });
+    expect(fakeAudio.volume).toBe(1);
+  });
+
+  it('keeps the user volume apart from the gain', async () => {
+    let player;
+    harness((p) => { player = p; });
+    await act(async () => { player.playTracks(tagged, 0); });
+    await act(async () => { player.setVolume(0.8); });
+    expect(player.volume).toBe(0.8);
+    expect(fakeAudio.volume).toBeCloseTo(0.2, 3);
+  });
+
+  it('follows the setting live', async () => {
+    const { setReplayGainMode } = await import('../utils/replayGain.js');
+    let player;
+    harness((p) => { player = p; });
+    await act(async () => { player.playTracks(tagged, 0); });
+    await act(async () => { setReplayGainMode('track'); });
+    expect(fakeAudio.volume).toBeCloseTo(0.5, 3);
+    await act(async () => { setReplayGainMode('off'); });
+    expect(fakeAudio.volume).toBe(1);
+  });
+});

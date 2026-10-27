@@ -44,7 +44,11 @@ export const SCHEMA = `
     file_path  TEXT,
     play_count     INTEGER NOT NULL DEFAULT 0,
     last_played_at TEXT,
-    is_favorite    INTEGER NOT NULL DEFAULT 0 CHECK(is_favorite IN (0,1))
+    is_favorite    INTEGER NOT NULL DEFAULT 0 CHECK(is_favorite IN (0,1)),
+    rg_track_gain  REAL,
+    rg_track_peak  REAL,
+    rg_album_gain  REAL,
+    rg_album_peak  REAL
   );
 
   CREATE INDEX IF NOT EXISTS idx_albums_artist  ON albums(artist_id);

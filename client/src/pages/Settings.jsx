@@ -4,7 +4,8 @@ import { useI18n } from '../config/i18n/index.jsx';
 import { api } from '../api/client.js';
 import { FolderPickerModal } from '../components/FolderPickerModal.jsx';
 import { isRemoteControlEnabled, setRemoteControlEnabled } from '../utils/remoteControl.js';
-import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music, Radio, Cast } from 'lucide-preact';
+import { REPLAYGAIN_MODES, getReplayGainMode, setReplayGainMode } from '../utils/replayGain.js';
+import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music, Radio, Cast, Volume2 } from 'lucide-preact';
 
 export function Settings({ navigate }) {
   const { t } = useI18n();
@@ -21,6 +22,7 @@ export function Settings({ navigate }) {
   const [discogsSaving, setDiscogsSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [remoteControl, setRemoteControl] = useState(isRemoteControlEnabled);
+  const [replayGainMode, setReplayGainModeState] = useState(getReplayGainMode);
   const [musicPath, setMusicPath] = useState('');
   const [musicPathSaving, setMusicPathSaving] = useState(false);
   const [browsingLibrary, setBrowsingLibrary] = useState(false);
@@ -596,6 +598,39 @@ export function Settings({ navigate }) {
                   <span class="form-check-label">{t('remoteControl.label')}</span>
                 </label>
                 <p class="text-muted small mb-0">{t('remoteControl.autoplay')}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Volume normalization (per browser) */}
+        <div class="row mt-4">
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title fs-5 mb-0">
+                  <Volume2 size={18} class="me-2" />
+                  {t('replayGain.title')}
+                </h3>
+              </div>
+              <div class="card-body">
+                <p class="text-muted small mb-3">{t('replayGain.description')}</p>
+                <label class="form-label" for="replaygain-mode">{t('replayGain.label')}</label>
+                <select
+                  id="replaygain-mode"
+                  class="form-select mb-2"
+                  style={{ maxWidth: '20rem' }}
+                  value={replayGainMode}
+                  onChange={(e) => {
+                    setReplayGainModeState(e.currentTarget.value);
+                    setReplayGainMode(e.currentTarget.value);
+                  }}
+                >
+                  {REPLAYGAIN_MODES.map(mode => (
+                    <option key={mode} value={mode}>{t(`replayGain.modes.${mode}`)}</option>
+                  ))}
+                </select>
+                <p class="text-muted small mb-0">{t('replayGain.hint')}</p>
               </div>
             </div>
           </div>

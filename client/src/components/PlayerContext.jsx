@@ -9,6 +9,7 @@ import {
   remoteEventsUrl,
   runCommand,
 } from '../utils/remoteControl.js';
+import { getReplayGainMode, replayGainFactor } from '../utils/replayGain.js';
 
 const PlayerContext = createContext(null);
 
@@ -27,6 +28,7 @@ export function buildQueue(album) {
       artist_name: album.artist?.name || '',
       cover_url: album.cover_url || null,
       is_favorite: Boolean(t.is_favorite),
+      replaygain: t.replaygain ?? null,
     }));
 }
 
@@ -506,10 +508,20 @@ export function PlayerProvider({ children }) {
     originalQueueRef.current = [];
   }, []);
 
+  // ReplayGain rides on the element volume: `volume` stays what the user (or
+  // the remote controller) set, the element gets it scaled for the track.
+  const [replayGainMode, setReplayGainModeState] = useState(getReplayGainMode);
+  useEffect(() => {
+    const onChange = (event) => setReplayGainModeState(event.detail);
+    window.addEventListener('jewelbox-replaygain', onChange);
+    return () => window.removeEventListener('jewelbox-replaygain', onChange);
+  }, []);
+
+  const trackGain = replayGainFactor(current?.replaygain, replayGainMode);
   useEffect(() => {
     const audio = audioRef.current;
-    if (audio) audio.volume = volume;
-  }, [volume]);
+    if (audio) audio.volume = volume * trackGain;
+  }, [volume, trackGain]);
 
   useEffect(() => {
     const audio = audioRef.current;

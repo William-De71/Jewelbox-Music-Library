@@ -51,6 +51,21 @@ export async function walkAudioFiles(rootDir, subDir = '') {
   return files;
 }
 
+// music-metadata gives each ReplayGain tag as { dB, ratio }: gains are kept in
+// dB, peaks as the linear sample peak (what the tags themselves store).
+function finiteOrNull(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+export function replayGainOf(common) {
+  return {
+    trackGain: finiteOrNull(common?.replaygain_track_gain?.dB),
+    trackPeak: finiteOrNull(common?.replaygain_track_peak?.ratio),
+    albumGain: finiteOrNull(common?.replaygain_album_gain?.dB),
+    albumPeak: finiteOrNull(common?.replaygain_album_peak?.ratio),
+  };
+}
+
 export async function readFileTags(absPath) {
   try {
     const { common } = await parseFile(absPath, { duration: false, skipCovers: true });
@@ -59,6 +74,7 @@ export async function readFileTags(absPath) {
       album: common.album || null,
       trackNo: common.track?.no ?? null,
       title: common.title || null,
+      replayGain: replayGainOf(common),
     };
   } catch {
     return null;
@@ -86,10 +102,11 @@ async function listFolderAudioFiles(libraryPath, relFolder) {
 }
 
 // Matches every audio file of relFolder against the album's tracks.
-// Returns entries [{ trackId, filePath }] (filePath relative to the library root).
+// Returns entries [{ trackId, filePath, replayGain }] (filePath relative to the library root).
 export async function matchManualFolder(libraryPath, relFolder, album) {
   const relPaths = await listFolderAudioFiles(libraryPath, relFolder);
   const files = [];
+  const replayGains = new Map();
   for (const relPath of relPaths) {
     const tags = await readFileTags(path.join(libraryPath, relPath));
     const fallback = parsePathFallback(relPath);
@@ -98,8 +115,10 @@ export async function matchManualFolder(libraryPath, relFolder, album) {
       trackNo: tags?.trackNo ?? fallback.trackNo,
       title: tags?.title ?? fallback.title,
     });
+    if (tags?.replayGain) replayGains.set(relPath, tags.replayGain);
   }
-  return matchFolderTracks(album.tracks, files);
+  return matchFolderTracks(album.tracks, files)
+    .map(entry => ({ ...entry, replayGain: replayGains.get(entry.filePath) ?? null }));
 }
 
 async function runScan(libraryPath) {
@@ -137,7 +156,7 @@ async function runScan(libraryPath) {
     if (track && !usedTrackIds.has(track.id)) {
       usedTrackIds.add(track.id);
       matchedAlbumIds.add(album.id);
-      entries.push({ trackId: track.id, filePath: relPath });
+      entries.push({ trackId: track.id, filePath: relPath, replayGain: tags?.replayGain ?? null });
     } else {
       result.unmatched_count++;
       if (result.unmatched_files.length < UNMATCHED_LIMIT) result.unmatched_files.push(relPath);

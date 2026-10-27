@@ -122,7 +122,8 @@ export function getAlbumById(id) {
   const album = mapAlbum(db.prepare(`${ALBUM_SELECT} WHERE a.id = ?`).get(id));
   if (!album) return null;
   album.tracks = db
-    .prepare('SELECT id, position, title, duration, file_path, play_count, is_favorite FROM tracks WHERE album_id = ? ORDER BY position')
+    .prepare(`SELECT id, position, title, duration, file_path, play_count, is_favorite, ${REPLAYGAIN_FIELDS}
+              FROM tracks t WHERE album_id = ? ORDER BY position`)
     .all(id)
     .map(t => ({
       id: t.id,
@@ -132,8 +133,23 @@ export function getAlbumById(id) {
       has_file: t.file_path != null,
       play_count: t.play_count,
       is_favorite: Boolean(t.is_favorite),
+      replaygain: mapReplayGain(t),
     }));
   return album;
+}
+
+// ReplayGain of a track's file for the players: gains in dB, peaks linear;
+// null when the file carries no tag at all (or before the first scan).
+const REPLAYGAIN_FIELDS = 't.rg_track_gain, t.rg_track_peak, t.rg_album_gain, t.rg_album_peak';
+
+export function mapReplayGain(row) {
+  if (row.rg_track_gain == null && row.rg_album_gain == null) return null;
+  return {
+    track_gain: row.rg_track_gain ?? null,
+    track_peak: row.rg_track_peak ?? null,
+    album_gain: row.rg_album_gain ?? null,
+    album_peak: row.rg_album_peak ?? null,
+  };
 }
 
 export function createAlbum(data) {
@@ -349,11 +365,27 @@ export function getAlbumsForMatching({ manualOnly = false } = {}) {
   return albums;
 }
 
+// The ReplayGain values travel with the file: a track losing its file loses them too.
+const CLEAR_FILE = 'file_path = NULL, rg_track_gain = NULL, rg_track_peak = NULL, rg_album_gain = NULL, rg_album_peak = NULL';
+
+// entries = [{ trackId, filePath, replayGain? }], replayGain as read by audioScanner#replayGainOf
 export function setTrackFilePaths(entries) {
   const db = getDb();
-  const update = db.prepare('UPDATE tracks SET file_path = ? WHERE id = ?');
+  const update = db.prepare(`
+    UPDATE tracks SET file_path = ?, rg_track_gain = ?, rg_track_peak = ?, rg_album_gain = ?, rg_album_peak = ?
+    WHERE id = ?`);
   db.transaction(() => {
-    for (const { trackId, filePath } of entries) update.run(filePath, trackId);
+    for (const { trackId, filePath, replayGain } of entries) {
+      const rg = filePath != null ? replayGain : null;
+      update.run(
+        filePath,
+        rg?.trackGain ?? null,
+        rg?.trackPeak ?? null,
+        rg?.albumGain ?? null,
+        rg?.albumPeak ?? null,
+        trackId,
+      );
+    }
   })();
 }
 
@@ -362,7 +394,7 @@ export function clearAllFilePaths({ keepManual = true } = {}) {
   const where = keepManual
     ? 'WHERE album_id IN (SELECT id FROM albums WHERE audio_folder IS NULL)'
     : '';
-  db.prepare(`UPDATE tracks SET file_path = NULL ${where}`).run();
+  db.prepare(`UPDATE tracks SET ${CLEAR_FILE} ${where}`).run();
 }
 
 export function setAlbumAudioFolder(albumId, folder) {
@@ -370,7 +402,7 @@ export function setAlbumAudioFolder(albumId, folder) {
   db.transaction(() => {
     db.prepare("UPDATE albums SET audio_folder = ?, updated_at = datetime('now') WHERE id = ?").run(folder, albumId);
     if (folder === null) {
-      db.prepare('UPDATE tracks SET file_path = NULL WHERE album_id = ?').run(albumId);
+      db.prepare(`UPDATE tracks SET ${CLEAR_FILE} WHERE album_id = ?`).run(albumId);
     }
   })();
 }
@@ -410,7 +442,7 @@ export function getTrackWithAlbum(trackId) {
 
 export const QUEUE_TRACK_FIELDS = `
   t.id, t.title, t.duration, (t.file_path IS NOT NULL) AS has_file,
-  t.play_count, t.is_favorite,
+  t.play_count, t.is_favorite, ${REPLAYGAIN_FIELDS},
   a.id AS album_id, a.title AS album_title, a.cover_url,
   ar.name AS artist_name`;
 
@@ -427,6 +459,7 @@ export function mapQueueTrack(row, i) {
     album_title: row.album_title,
     artist_name: row.artist_name,
     cover_url: row.cover_url,
+    replaygain: mapReplayGain(row),
   };
 }
 
