@@ -22,6 +22,8 @@ export default defineConfig({
         'src/routes/smartPlaylists.js',
         'src/routes/lastfm.js',
         'src/utils/audioMatch.js',
+        'src/utils/backup.js',
+        'src/utils/lyrics.js',
         'src/utils/fsBrowser.js',
         'src/utils/lastfm.js',
         'src/utils/mdns.js',

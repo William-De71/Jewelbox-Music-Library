@@ -176,6 +176,20 @@ function runMigrations(database) {
     `);
     console.log('[Migration] Created track_plays table');
   }
+  if (!tables.includes('track_lyrics')) {
+    // What LRCLIB answered for a track (found or not), see utils/lyrics.js.
+    database.exec(`
+      CREATE TABLE track_lyrics (
+        track_id     INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+        found        INTEGER NOT NULL CHECK(found IN (0,1)),
+        synced       TEXT,
+        plain        TEXT,
+        instrumental INTEGER NOT NULL DEFAULT 0,
+        fetched_at   TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    console.log('[Migration] Created track_lyrics table');
+  }
   if (!tables.includes('loan_history')) {
     database.exec(`
       CREATE TABLE loan_history (

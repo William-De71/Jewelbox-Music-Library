@@ -11,6 +11,7 @@ import {
 } from '../utils/remoteControl.js';
 import { getReplayGainMode, replayGainFactor } from '../utils/replayGain.js';
 import { sleepFadeFactor, sleepTimerFrom } from '../utils/sleepTimer.js';
+import { followsOnAlbum, getTransitionFade, transitionFadeFactor } from '../utils/transitionFade.js';
 
 const PlayerContext = createContext(null);
 
@@ -559,10 +560,27 @@ export function PlayerProvider({ children }) {
   }, []);
 
   const trackGain = replayGainFactor(current?.replaygain, replayGainMode);
+
+  // Soft transition between tracks (utils/transitionFade.js), never inside
+  // an album played in order. Follows the time updates (~4 per second).
+  const [transitionFade, setTransitionFadeState] = useState(getTransitionFade);
+  useEffect(() => {
+    const onChange = (event) => setTransitionFadeState(event.detail);
+    window.addEventListener('jewelbox-transition-fade', onChange);
+    return () => window.removeEventListener('jewelbox-transition-fade', onChange);
+  }, []);
+  const transition = transitionFadeFactor({
+    time: currentTime,
+    duration,
+    fade: transitionFade,
+    fadeIn: index > 0 && !followsOnAlbum(queue[index - 1], current),
+    fadeOut: index + 1 < queue.length && !followsOnAlbum(current, queue[index + 1]),
+  });
+
   useEffect(() => {
     const audio = audioRef.current;
-    if (audio) audio.volume = volume * trackGain * sleepFade;
-  }, [volume, trackGain, sleepFade]);
+    if (audio) audio.volume = volume * trackGain * sleepFade * transition;
+  }, [volume, trackGain, sleepFade, transition]);
 
   // Timed sleep timer: fade over the last seconds, then pause. It counts on
   // while paused; running out then simply clears it.

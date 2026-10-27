@@ -122,6 +122,16 @@ export const api = {
   // position and ignore the rest).
   reportLiveState: (state) => request('PATCH', '/player/queue/state', state),
   getTrack: (id) => request('GET', `/player/tracks/${id}`),
+  // Lyrics of a track (server >= 1.20): { synced, lines: [{ time, text }], plain, source }.
+  getLyrics: (trackId) => request('GET', `/player/tracks/${trackId}/lyrics`),
+  getLyricsSettings: () => request('GET', '/player/lyrics/settings'),
+  saveLyricsSettings: (online) => request('PUT', '/player/lyrics/settings', { online }),
+  // Backups of the collections (server >= 1.20).
+  getBackups: () => request('GET', '/backups'),
+  saveBackupSettings: (settings) => request('PUT', '/backups/settings', settings),
+  createBackup: () => request('POST', '/backups'),
+  restoreBackup: (name) => request('POST', `/backups/${encodeURIComponent(name)}/restore`),
+  deleteBackup: (name) => request('DELETE', `/backups/${encodeURIComponent(name)}`),
   // Listening statistics; period: 'month', 'year' or 'all'.
   getListeningStats: (period) => request('GET', `/player/stats?period=${period}`),
   getRadio: ({ album_id, artist_id }) =>

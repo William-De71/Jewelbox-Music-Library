@@ -9,6 +9,7 @@ vi.mock('../db/database.js', () => ({
 
 vi.mock('../db/settings.js', () => ({
   getSetting: vi.fn(),
+  setSetting: vi.fn(),
   getMusicLibraryPath: vi.fn(),
 }));
 

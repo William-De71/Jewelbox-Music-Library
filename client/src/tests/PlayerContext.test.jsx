@@ -429,3 +429,27 @@ describe('PlayerContext sleep timer', () => {
     expect(player.sleepTimer).toBeNull();
   });
 });
+
+describe('PlayerContext transition fade', () => {
+  const MIXED = [
+    { id: 1, title: 'A1', has_file: true, album_id: 1, position: 1 },
+    { id: 2, title: 'A2', has_file: true, album_id: 1, position: 2 },
+    { id: 3, title: 'B1', has_file: true, album_id: 2, position: 7 },
+  ];
+
+  it('fades between albums, never inside one', async () => {
+    localStorage.setItem('jewelbox-transition-fade', '4');
+    let player;
+    harness((p) => { player = p; });
+    await act(async () => { player.playTracks(MIXED, 1); });
+    // Track 2 follows track 1 on its album: no fade-in; track 3 is another album: fade-out.
+    await act(async () => { fakeAudio.currentTime = 0; fakeAudio.emit('timeupdate'); });
+    expect(fakeAudio.volume).toBe(1);
+    await act(async () => { fakeAudio.emit('loadedmetadata'); });
+    await act(async () => { fakeAudio.currentTime = 198; fakeAudio.emit('timeupdate'); });
+    expect(fakeAudio.volume).toBeCloseTo(0.5, 3);
+    await act(async () => { player.next(); });
+    await act(async () => { fakeAudio.currentTime = 1; fakeAudio.emit('timeupdate'); });
+    expect(fakeAudio.volume).toBeCloseTo(0.25, 3);
+  });
+});

@@ -413,6 +413,32 @@ export function getTrackForStream(trackId) {
 
 // playedAt: 'YYYY-MM-DD HH:MM:SS' UTC for a play reported late (a phone
 // that played offline), now when omitted. last_played_at never goes back.
+// ── Lyrics cache (utils/lyrics.js) ──────────────────────────────────────────
+
+export function getTrackForLyrics(trackId) {
+  return getDb().prepare(`
+    SELECT t.id, t.title, t.duration, t.file_path, a.title AS album_title, ar.name AS artist_name
+    FROM tracks t
+    JOIN albums a ON a.id = t.album_id
+    JOIN artists ar ON ar.id = a.artist_id
+    WHERE t.id = ?
+  `).get(trackId) || null;
+}
+
+export function getCachedLyrics(trackId) {
+  return getDb().prepare('SELECT * FROM track_lyrics WHERE track_id = ?').get(trackId) || null;
+}
+
+// lyrics: { synced, plain, instrumental } or null for "LRCLIB has none".
+export function cacheLyrics(trackId, lyrics) {
+  getDb().prepare(`
+    INSERT INTO track_lyrics (track_id, found, synced, plain, instrumental, fetched_at)
+    VALUES (?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(track_id) DO UPDATE SET found = excluded.found, synced = excluded.synced,
+      plain = excluded.plain, instrumental = excluded.instrumental, fetched_at = excluded.fetched_at
+  `).run(trackId, lyrics ? 1 : 0, lyrics?.synced ?? null, lyrics?.plain ?? null, lyrics?.instrumental ? 1 : 0);
+}
+
 export function markTrackPlayed(trackId, playedAt = null) {
   const db = getDb();
   let changes = 0;

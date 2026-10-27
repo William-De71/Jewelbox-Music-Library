@@ -4,6 +4,8 @@ import { getMusicLibraryPath } from '../db/settings.js';
 import { parseRankingLimit } from '../db/smartPlaylists.js';
 import { getRadio, RADIO_DEFAULT_SIZE, RADIO_MAX_SIZE } from '../db/radio.js';
 import { getListeningStats, LISTENING_PERIODS, sqlUtc } from '../db/listening.js';
+import { getSetting, setSetting } from '../db/settings.js';
+import { MISS_RETRY_DAYS, fetchLrclib, lyricsPayload, readLocalLrc } from '../utils/lyrics.js';
 import { startScan, getScanStatus, matchManualFolder, isAudioFile } from '../utils/audioScanner.js';
 import {
   getAlbumById,
@@ -13,6 +15,10 @@ import {
   setAlbumAudioFolder,
   setTrackFilePaths,
   markTrackPlayed,
+  durationToSeconds,
+  getTrackForLyrics,
+  getCachedLyrics,
+  cacheLyrics,
   setTrackFavorite,
   recordPlay,
   getRecentPlayedItems,
@@ -141,6 +147,48 @@ export async function playerRoutes(fastify) {
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }
+  });
+
+  // Lyrics of a track: a .lrc next to the file first, then LRCLIB (cached).
+  fastify.get('/player/tracks/:id/lyrics', async (req, reply) => {
+    try {
+      const track = getTrackForLyrics(Number(req.params.id));
+      if (!track) return reply.code(404).send({ error: 'Track not found' });
+      const local = readLocalLrc(getMusicLibraryPath(), track.file_path);
+      if (local) return lyricsPayload({ synced: local, source: 'file' });
+
+      const cached = getCachedLyrics(track.id);
+      if (cached?.found) return lyricsPayload({ ...cached, source: 'lrclib' });
+      const missAge = cached ? (Date.now() - Date.parse(`${cached.fetched_at.replace(' ', 'T')}Z`)) / 86_400_000 : Infinity;
+      if (missAge < MISS_RETRY_DAYS || getSetting('lyrics_online') === '0') return lyricsPayload();
+
+      let found;
+      try {
+        found = await fetchLrclib({
+          artist: track.artist_name,
+          title: track.title,
+          album: track.album_title,
+          duration: durationToSeconds(track.duration),
+        });
+      } catch (err) {
+        req.log.warn(`[Lyrics] ${err.message}`);
+        return lyricsPayload(); // not cached: asked again next time
+      }
+      cacheLyrics(track.id, found);
+      return found ? lyricsPayload({ ...found, source: 'lrclib' }) : lyricsPayload();
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Whether the lyrics may be looked up on LRCLIB (the artist and title of
+  // the track leave the server). On by default.
+  fastify.get('/player/lyrics/settings', async () => ({ online: getSetting('lyrics_online') !== '0' }));
+
+  fastify.put('/player/lyrics/settings', async (req, reply) => {
+    if (typeof req.body?.online !== 'boolean') return reply.code(400).send({ error: 'online must be a boolean' });
+    setSetting('lyrics_online', req.body.online ? '1' : '0');
+    return { online: req.body.online };
   });
 
   // Listening statistics: counters, the tops of the period (month, year or

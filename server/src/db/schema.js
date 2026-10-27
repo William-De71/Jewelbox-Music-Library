@@ -89,6 +89,15 @@ export const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_track_plays_played_at ON track_plays(played_at);
   CREATE INDEX IF NOT EXISTS idx_track_plays_track     ON track_plays(track_id);
 
+  CREATE TABLE IF NOT EXISTS track_lyrics (
+    track_id     INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    found        INTEGER NOT NULL CHECK(found IN (0,1)),
+    synced       TEXT,
+    plain        TEXT,
+    instrumental INTEGER NOT NULL DEFAULT 0,
+    fetched_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS loan_history (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     album_id    INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,

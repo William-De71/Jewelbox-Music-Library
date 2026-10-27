@@ -88,6 +88,14 @@ La file est enregistrée sur le serveur : elle est restaurée au rechargement de
 
 Chaque appareil possède sa propre file, identifiée par un jeton local : le navigateur du bureau et le téléphone ne s'écrasent donc jamais l'un l'autre. `GET /api/player/queue/devices` liste les files laissées par les autres appareils, de quoi reprendre sur le téléphone ce que le bureau écoutait.
 
+### Paroles
+
+Dans le lecteur plein écran, l'onglet **Paroles** affiche les paroles du morceau : synchronisées (la ligne chantée suit la musique, un clic y saute) quand elles existent, sinon le texte. Le serveur prend d'abord un fichier `.lrc` posé à côté du fichier audio (même nom), puis interroge [LRCLIB](https://lrclib.net) (libre, sans compte) et garde la réponse. La recherche en ligne se coupe dans **Paramètres → Paroles**. Même chose dans les lecteurs bureau et Android.
+
+### Fondu entre les morceaux
+
+**Paramètres → Normalisation du volume → Fondu entre les morceaux** (2 à 8 s, désactivé par défaut) : le son baisse à la fin d'un morceau et remonte au début du suivant, sans chevauchement, et jamais entre deux pistes qui se suivent sur un même album.
+
 ### Normalisation du volume (ReplayGain)
 
 L'analyse de la bibliothèque lit aussi les tags ReplayGain des fichiers (écrits par JewelBox Ripper, ou `rsgain easy` sur une bibliothèque existante) et les expose aux lecteurs (`replaygain` sur chaque piste : gains en dB, crêtes linéaires). Dans **Paramètres → Normalisation du volume**, choisissez *Par album* (défaut), *Par piste* ou *Désactivée* — réglage propre à chaque navigateur. Le gain passe par le volume du lecteur : les albums masterisés fort sont baissés, un gain positif est ignoré. Pour des fichiers déjà associés, relancez l'analyse une fois.
@@ -150,6 +158,10 @@ serveur reste joignable normalement par son adresse IP.
 > Sinon, réglez `MDNS_ENABLED=false` pour éviter une annonce qui ne sert à rien.
 
 ---
+
+## 💾 Sauvegardes
+
+**Paramètres → Sauvegardes** : le serveur sauvegarde lui-même toutes les collections (bases SQLite, copiées à chaud, et pochettes), chaque jour ou chaque semaine à l'heure choisie, en gardant les N dernières. Un bouton lance une sauvegarde tout de suite ; chaque sauvegarde se restaure en un clic, après une copie de sécurité de l'état actuel. Choisissez de préférence un dossier sur un autre disque (un NAS monté dans le conteneur) : par défaut, les sauvegardes vont dans `data/backups`, sur le même volume que les données. Les réglages (bibliothèque musicale, Last.fm…) ne sont pas sauvegardés.
 
 ## 🐳 Docker
 

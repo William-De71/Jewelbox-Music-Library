@@ -3,9 +3,10 @@ import { useI18n } from '../config/i18n/index.jsx';
 import { usePlayer } from './PlayerContext.jsx';
 import { formatTime } from '../utils/formatTime.js';
 import { SleepTimerButton } from './SleepTimerButton.jsx';
+import { LyricsPanel } from './LyricsPanel.jsx';
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, X, Disc, ChevronDown, ListMusic,
-  Shuffle, Repeat, Repeat1, Heart, Infinity as InfinityIcon, GripVertical, Trash2,
+  Shuffle, Repeat, Repeat1, Heart, Infinity as InfinityIcon, GripVertical, Trash2, MicVocal,
 } from 'lucide-preact';
 
 // "3:45" -> 225; anything unparseable contributes nothing to the total.
@@ -28,6 +29,7 @@ export function PlayerView({ navigate }) {
 
   const [dragIndex, setDragIndex] = useState(null);
   const [dropIndex, setDropIndex] = useState(null);
+  const [showLyrics, setShowLyrics] = useState(false);
 
   // Time left in the queue, current track included.
   const remaining = queue
@@ -176,25 +178,43 @@ export function PlayerView({ navigate }) {
         </div>
 
         <div class="player-view-queue-header text-muted small">
-          <ListMusic size={14} class="me-1" />{t('player.queue')} ({queue.length})
+          <button
+            type="button"
+            class={`btn btn-sm ${showLyrics ? 'btn-ghost-secondary' : 'btn-ghost-primary'} px-1 me-1`}
+            onClick={() => setShowLyrics(false)}
+            aria-pressed={!showLyrics}
+          >
+            <ListMusic size={14} class="me-1" />{t('player.queue')} ({queue.length})
+          </button>
+          <button
+            type="button"
+            class={`btn btn-sm ${showLyrics ? 'btn-ghost-primary' : 'btn-ghost-secondary'} px-1`}
+            onClick={() => setShowLyrics(true)}
+            aria-pressed={showLyrics}
+          >
+            <MicVocal size={14} class="me-1" />{t('lyrics.title')}
+          </button>
           {dynamicMix && (
             <span class="badge bg-primary-lt ms-2">
               <InfinityIcon size={12} class="me-1" />{t('player.dynamicMix')}
             </span>
           )}
-          {remaining > 0 && (
+          {!showLyrics && remaining > 0 && (
             <span class="ms-2 font-monospace">{t('player.remaining', { time: formatTime(remaining) })}</span>
           )}
-          <button
-            class="btn btn-icon btn-ghost-secondary btn-sm ms-auto"
-            onClick={clearQueue}
-            title={t('player.clearQueue')}
-            aria-label={t('player.clearQueue')}
-          >
-            <Trash2 size={16} />
-          </button>
+          {!showLyrics && (
+            <button
+              class="btn btn-icon btn-ghost-secondary btn-sm ms-auto"
+              onClick={clearQueue}
+              title={t('player.clearQueue')}
+              aria-label={t('player.clearQueue')}
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
-        <ol class="player-view-queue list-unstyled">
+        {showLyrics && <LyricsPanel trackId={current.id} currentTime={currentTime} onSeek={seek} />}
+        <ol class="player-view-queue list-unstyled" hidden={showLyrics}>
           {queue.map((track, i) => (
             <li
               key={`${track.entry_id ?? track.id}-${i}`}

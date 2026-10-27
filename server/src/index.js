@@ -17,6 +17,7 @@ import { isLastfmAvailable } from './utils/lastfmCredentials.js';
 import { getBrowseRoots, resolveInRoots, listDirectory, parentWithinRoots } from './utils/fsBrowser.js';
 import { smartPlaylistRoutes } from './routes/smartPlaylists.js';
 import { remoteRoutes } from './routes/remote.js';
+import { backupRoutes, startBackupScheduler } from './routes/backups.js';
 import { createDatabase, setActiveDatabase, deleteDatabase } from './db/manager.js';
 import { advertise, stopAdvertising, serviceName } from './utils/mdns.js';
 import { randomUUID } from 'crypto';
@@ -92,6 +93,9 @@ await fastify.register(smartPlaylistRoutes, { prefix: '/api' });
 
 // Register remote control routes (Gladys, other players)
 await fastify.register(remoteRoutes, { prefix: '/api' });
+
+// Backups of the collections (scheduled and on demand)
+await fastify.register(backupRoutes, { prefix: '/api' });
 
 // Register version routes
 await fastify.register(versionRoutes);
@@ -508,6 +512,7 @@ try {
   await fastify.listen({ port: PORT, host: HOST });
   console.log(`Server listening at http://${HOST}:${PORT}`);
   await advertise({ port: PORT, version: APP_VERSION, serverId: getServerId() });
+  startBackupScheduler();
 } catch (err) {
   console.error('Error starting server:', err);
   process.exit(1);

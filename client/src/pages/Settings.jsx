@@ -5,7 +5,10 @@ import { api } from '../api/client.js';
 import { FolderPickerModal } from '../components/FolderPickerModal.jsx';
 import { isRemoteControlEnabled, setRemoteControlEnabled } from '../utils/remoteControl.js';
 import { REPLAYGAIN_MODES, getReplayGainMode, setReplayGainMode } from '../utils/replayGain.js';
-import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music, Radio, Cast, Volume2 } from 'lucide-preact';
+import { BackupSettings } from '../components/BackupSettings.jsx';
+import { TRANSITION_FADE_CHOICES, getTransitionFade, setTransitionFade } from '../utils/transitionFade.js';
+import { LyricsSetting } from '../components/LyricsSetting.jsx';
+import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music, Radio, Cast, Volume2, Archive, MicVocal } from 'lucide-preact';
 
 export function Settings({ navigate }) {
   const { t } = useI18n();
@@ -23,6 +26,7 @@ export function Settings({ navigate }) {
   const [importing, setImporting] = useState(false);
   const [remoteControl, setRemoteControl] = useState(isRemoteControlEnabled);
   const [replayGainMode, setReplayGainModeState] = useState(getReplayGainMode);
+  const [transitionFade, setTransitionFadeState] = useState(getTransitionFade);
   const [musicPath, setMusicPath] = useState('');
   const [musicPathSaving, setMusicPathSaving] = useState(false);
   const [browsingLibrary, setBrowsingLibrary] = useState(false);
@@ -630,7 +634,60 @@ export function Settings({ navigate }) {
                     <option key={mode} value={mode}>{t(`replayGain.modes.${mode}`)}</option>
                   ))}
                 </select>
-                <p class="text-muted small mb-0">{t('replayGain.hint')}</p>
+                <p class="text-muted small">{t('replayGain.hint')}</p>
+                <label class="form-label mt-2" for="transition-fade">{t('transitionFade.label')}</label>
+                <select
+                  id="transition-fade"
+                  class="form-select mb-2"
+                  style={{ maxWidth: '20rem' }}
+                  value={transitionFade}
+                  onChange={(e) => {
+                    const seconds = Number(e.currentTarget.value);
+                    setTransitionFadeState(seconds);
+                    setTransitionFade(seconds);
+                  }}
+                >
+                  {TRANSITION_FADE_CHOICES.map(seconds => (
+                    <option key={seconds} value={seconds}>
+                      {seconds ? t('transitionFade.seconds', { seconds }) : t('transitionFade.off')}
+                    </option>
+                  ))}
+                </select>
+                <p class="text-muted small mb-0">{t('transitionFade.hint')}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Lyrics lookup (server side) */}
+        <div class="row mt-4">
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title fs-5 mb-0">
+                  <MicVocal size={18} class="me-2" />
+                  {t('lyrics.settingTitle')}
+                </h3>
+              </div>
+              <div class="card-body">
+                <LyricsSetting notify={showToast} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Backups of the collections (server side) */}
+        <div class="row mt-4">
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title fs-5 mb-0">
+                  <Archive size={18} class="me-2" />
+                  {t('backup.title')}
+                </h3>
+              </div>
+              <div class="card-body">
+                <BackupSettings notify={showToast} />
               </div>
             </div>
           </div>
