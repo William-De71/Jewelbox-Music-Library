@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { useI18n } from '../config/i18n/index.jsx';
 import { usePlayer } from './PlayerContext.jsx';
 import { formatTime } from '../utils/formatTime.js';
+import { SleepTimerButton } from './SleepTimerButton.jsx';
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, X, Disc, ChevronDown, ListMusic,
   Shuffle, Repeat, Repeat1, Heart, Infinity as InfinityIcon, GripVertical, Trash2,
@@ -171,6 +172,7 @@ export function PlayerView({ navigate }) {
             onInput={(e) => setVolume(parseFloat(e.currentTarget.value))}
             aria-label={t('player.volume')}
           />
+          <SleepTimerButton />
         </div>
 
         <div class="player-view-queue-header text-muted small">

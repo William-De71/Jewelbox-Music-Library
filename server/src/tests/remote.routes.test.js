@@ -136,6 +136,20 @@ describe('validateCommand', () => {
     expect(validateCommand({ command: 'play_media', media: { type: 'album', id: '3' } }, all)).toMatchObject({ status: 400 });
     expect(validateCommand({ command: 'play_media', media: { type: 'genre', id: 3 } }, all)).toMatchObject({ status: 400 });
   });
+
+  it('validates the sleep timer: minutes (0 cancels) or end of track', () => {
+    const timer = [...all, 'sleep_timer'];
+    expect(validateCommand({ command: 'sleep_timer', minutes: 30 }, timer))
+      .toEqual({ command: { command: 'sleep_timer', minutes: 30 } });
+    expect(validateCommand({ command: 'sleep_timer', minutes: 0 }, timer))
+      .toEqual({ command: { command: 'sleep_timer', minutes: 0 } });
+    expect(validateCommand({ command: 'sleep_timer', end_of_track: true, minutes: 5 }, timer))
+      .toEqual({ command: { command: 'sleep_timer', end_of_track: true } });
+    for (const minutes of [-1, 2.5, 721, '30', undefined]) {
+      expect(validateCommand({ command: 'sleep_timer', minutes }, timer)).toMatchObject({ status: 400 });
+    }
+    expect(validateCommand({ command: 'sleep_timer', minutes: 30 }, all)).toMatchObject({ status: 422 });
+  });
 });
 
 describe('parseLiveState', () => {
@@ -151,6 +165,15 @@ describe('parseLiveState', () => {
       playback_state: 'playing', position_sec: 12, duration_sec: 200, current_index: 0, track_id: 4,
       volume: 100, muted: false, shuffle: true,
     });
+  });
+
+  it('keeps a valid sleep timer', () => {
+    const live = (sleep_timer) => parseLiveState({ playback_state: 'playing', sleep_timer }).sleep_timer;
+    expect(live(null)).toBeNull();
+    expect(live({ end_of_track: true })).toEqual({ end_of_track: true });
+    expect(live({ ends_at: '2026-10-27T22:30:00+01:00' })).toEqual({ ends_at: '2026-10-27T21:30:00.000Z' });
+    expect(live({ ends_at: 'tonight' })).toBeUndefined();
+    expect(live(undefined)).toBeUndefined();
   });
 });
 

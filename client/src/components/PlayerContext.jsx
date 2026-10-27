@@ -10,6 +10,7 @@ import {
   runCommand,
 } from '../utils/remoteControl.js';
 import { getReplayGainMode, replayGainFactor } from '../utils/replayGain.js';
+import { sleepFadeFactor, sleepTimerFrom } from '../utils/sleepTimer.js';
 
 const PlayerContext = createContext(null);
 
@@ -66,6 +67,11 @@ export function PlayerProvider({ children }) {
   // No mute button here: only a remote controller (Gladys) mutes.
   const [muted, setMuted] = useState(false);
   const [dynamicMix, setDynamicMix] = useState(false);
+  // Sleep timer (utils/sleepTimer.js): null | { endsAt } | { endOfTrack: true }.
+  // sleepFade scales the volume down over its last seconds.
+  const [sleepTimer, setSleepTimerState] = useState(null);
+  const [sleepFade, setSleepFade] = useState(1);
+  const sleepTimerRef = useRef(null);
 
   const queueRef = useRef(queue);
   const indexRef = useRef(index);
@@ -147,6 +153,40 @@ export function PlayerProvider({ children }) {
     audio.src = api.trackStreamUrl(track.id);
     audio.play().catch(() => setPlaying(false));
   }, []);
+
+  // Loads a track without starting it: where the sleep timer leaves the
+  // player at the end of a track, so pressing play goes on with the queue.
+  const armAt = useCallback((newQueue, newIndex) => {
+    const audio = audioRef.current;
+    const track = newQueue[newIndex];
+    if (!audio || !track) return;
+    queueRef.current = newQueue;
+    indexRef.current = newIndex;
+    setQueue(newQueue);
+    setIndex(newIndex);
+    setCurrentTime(0);
+    setDuration(0);
+    scrobbleRef.current = {
+      trackId: track.id,
+      startedAt: Math.floor(Date.now() / 1000),
+      played: 0,
+      lastTime: 0,
+      scrobbled: false,
+    };
+    audio.src = api.trackStreamUrl(track.id);
+  }, []);
+
+  const applySleepTimer = useCallback((timer) => {
+    sleepTimerRef.current = timer;
+    setSleepTimerState(timer);
+    setSleepFade(1);
+  }, []);
+
+  // command: { minutes } (0 cancels) or { end_of_track: true }, the shape of
+  // the remote command.
+  const setSleepTimer = useCallback((command) => {
+    applySleepTimer(sleepTimerFrom(command, Date.now()));
+  }, [applySleepTimer]);
 
   // Replays the current track from the start (repeat one). Full scrobble reset:
   // Last.fm accepts re-scrobbles of a replayed track, and local play counting follows.
@@ -506,7 +546,8 @@ export function PlayerProvider({ children }) {
     setDynamicMix(false);
     dynamicMixRef.current = false;
     originalQueueRef.current = [];
-  }, []);
+    applySleepTimer(null);
+  }, [applySleepTimer]);
 
   // ReplayGain rides on the element volume: `volume` stays what the user (or
   // the remote controller) set, the element gets it scaled for the track.
@@ -520,8 +561,26 @@ export function PlayerProvider({ children }) {
   const trackGain = replayGainFactor(current?.replaygain, replayGainMode);
   useEffect(() => {
     const audio = audioRef.current;
-    if (audio) audio.volume = volume * trackGain;
-  }, [volume, trackGain]);
+    if (audio) audio.volume = volume * trackGain * sleepFade;
+  }, [volume, trackGain, sleepFade]);
+
+  // Timed sleep timer: fade over the last seconds, then pause. It counts on
+  // while paused; running out then simply clears it.
+  useEffect(() => {
+    if (!sleepTimer?.endsAt) return undefined;
+    const tick = () => {
+      const now = Date.now();
+      if (now >= sleepTimer.endsAt) {
+        audioRef.current?.pause();
+        applySleepTimer(null);
+      } else {
+        setSleepFade(sleepFadeFactor(sleepTimer, now));
+      }
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    return () => clearInterval(id);
+  }, [sleepTimer, applySleepTimer]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -631,12 +690,20 @@ export function PlayerProvider({ children }) {
     };
     const onLoadedMetadata = () => setDuration(audio.duration || 0);
     const onEnded = () => {
-      // repeat one: the track loops on purpose, keep it in the mix list
-      if (repeatRef.current === 'one') return replayCurrent();
       const q = queueRef.current;
       const i = indexRef.current;
       const ended = q[i];
       const hasNext = i + 1 < q.length;
+      // Sleep timer "end of track": stop here, the next track armed but silent.
+      if (sleepTimerRef.current?.endOfTrack) {
+        applySleepTimer(null);
+        setPlaying(false);
+        if (hasNext) armAt(q, i + 1);
+        if (dynamicMixRef.current && ended) consumeDynamicMix(ended.id, false);
+        return undefined;
+      }
+      // repeat one: the track loops on purpose, keep it in the mix list
+      if (repeatRef.current === 'one') return replayCurrent();
       if (hasNext) playAt(q, i + 1);
       else if (!dynamicMixRef.current && repeatRef.current === 'all' && q.length) wrapAround();
       else setPlaying(false);
@@ -658,7 +725,7 @@ export function PlayerProvider({ children }) {
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
     };
-  }, [playAt]);
+  }, [playAt, armAt, applySleepTimer]);
 
   // MediaSession: lock-screen / notification controls (Android, GNOME)
   useEffect(() => {
@@ -707,11 +774,11 @@ export function PlayerProvider({ children }) {
   const [reportTick, setReportTick] = useState(0);
 
   useEffect(() => {
-    const live = liveStateOf({ current, index, playing, currentTime, duration, volume, muted, shuffle, repeat });
+    const live = liveStateOf({ current, index, playing, currentTime, duration, volume, muted, shuffle, repeat, sleepTimer });
     if (reporterRef.current.update(live, Date.now())) {
       api.reportLiveState({ ...live, device_label: getDeviceLabel() }).catch(() => {});
     }
-  }, [current, index, playing, currentTime, duration, volume, muted, shuffle, repeat, reportTick]);
+  }, [current, index, playing, currentTime, duration, volume, muted, shuffle, repeat, sleepTimer, reportTick]);
 
   // The commands read the latest player through this ref: the stream is
   // opened once, not on every render.
@@ -743,7 +810,8 @@ export function PlayerProvider({ children }) {
 
   const value = {
     queue, index, current, playing, currentTime, duration, volume, expanded,
-    repeat, shuffle, dynamicMix, muted,
+    repeat, shuffle, dynamicMix, muted, sleepTimer,
+    setSleepTimer,
     playTracks, playAlbum, playAlbumById, playDynamicMix,
     removeDynamicMixTrack, refreshDynamicMix,
     toggle, next, prev, seek, setVolume, close, setExpanded, jumpTo,

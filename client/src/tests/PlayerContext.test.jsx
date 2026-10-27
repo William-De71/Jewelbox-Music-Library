@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act } from '@testing-library/preact';
 import { useEffect } from 'preact/hooks';
 
@@ -367,5 +367,65 @@ describe('PlayerContext ReplayGain', () => {
     expect(fakeAudio.volume).toBeCloseTo(0.5, 3);
     await act(async () => { setReplayGainMode('off'); });
     expect(fakeAudio.volume).toBe(1);
+  });
+});
+
+describe('PlayerContext sleep timer', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('fades out over the last seconds, then pauses and restores the volume', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    let player;
+    harness((p) => { player = p; });
+    await act(async () => { player.playTracks(TRACKS, 0); });
+    await act(async () => { player.setSleepTimer({ minutes: 15 }); });
+    expect(player.sleepTimer.endsAt).toBe(Date.now() + 15 * 60000);
+
+    await act(async () => { vi.advanceTimersByTime(15 * 60000 - 5000); });
+    expect(fakeAudio.volume).toBeCloseTo(0.5, 1);
+    expect(fakeAudio.paused).toBe(false);
+
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(fakeAudio.paused).toBe(true);
+    expect(player.sleepTimer).toBeNull();
+    expect(fakeAudio.volume).toBe(1);
+  });
+
+  it('cancels with 0 minutes', async () => {
+    let player;
+    harness((p) => { player = p; });
+    await act(async () => { player.playTracks(TRACKS, 0); });
+    await act(async () => { player.setSleepTimer({ minutes: 30 }); });
+    await act(async () => { player.setSleepTimer({ minutes: 0 }); });
+    expect(player.sleepTimer).toBeNull();
+  });
+
+  it('stops at the end of the track, the next one armed but silent', async () => {
+    localStorage.setItem('jewelbox-repeat', 'one');
+    let player;
+    harness((p) => { player = p; });
+    await act(async () => { player.playTracks(TRACKS, 0); });
+    await act(async () => { player.setSleepTimer({ end_of_track: true }); });
+    await act(async () => { fakeAudio.paused = true; fakeAudio.emit('ended'); });
+    expect(player.sleepTimer).toBeNull();
+    expect(player.playing).toBe(false);
+    expect(player.index).toBe(1);
+    expect(fakeAudio.src).toContain('/tracks/2/stream');
+    expect(fakeAudio.paused).toBe(true);
+
+    // The timer is spent: the next end advances as usual (repeat one here).
+    await act(async () => { player.toggle(); });
+    await act(async () => { fakeAudio.emit('ended'); });
+    expect(player.index).toBe(1);
+    expect(fakeAudio.paused).toBe(false);
+  });
+
+  it('is dropped when the player closes', async () => {
+    let player;
+    harness((p) => { player = p; });
+    await act(async () => { player.playTracks(TRACKS, 0); });
+    await act(async () => { player.setSleepTimer({ end_of_track: true }); });
+    await act(async () => { player.close(); });
+    expect(player.sleepTimer).toBeNull();
   });
 });

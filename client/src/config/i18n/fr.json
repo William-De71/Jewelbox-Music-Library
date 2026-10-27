@@ -512,6 +512,13 @@
     "label": "Autoriser le contrôle à distance",
     "autoplay": "Le navigateur peut refuser de lancer le son tant que vous n'avez pas joué un morceau vous-même dans cet onglet."
   },
+  "sleepTimer": {
+    "title": "Minuteur de sommeil",
+    "minutes": "{minutes} min",
+    "endOfTrack": "Fin de la piste en cours",
+    "endOfTrackShort": "fin de piste",
+    "cancel": "Annuler le minuteur"
+  },
   "replayGain": {
     "title": "Normalisation du volume",
     "description": "D'après les tags ReplayGain des fichiers (ajoutés par JewelBox Ripper) : les albums masterisés fort sont baissés au niveau des autres. Par album, chaque disque garde ses nuances. Le réglage vaut pour ce navigateur seulement.",

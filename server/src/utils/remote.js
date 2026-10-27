@@ -19,12 +19,15 @@ export const REPORT_TTL_MS = 90_000;
 
 // What a player may announce it supports. play / pause / toggle / next /
 // previous are always understood; the rest is optional.
-export const CAPABILITIES = ['seek', 'volume', 'mute', 'shuffle', 'repeat', 'queue', 'play_media', 'append'];
+export const CAPABILITIES = ['seek', 'volume', 'mute', 'shuffle', 'repeat', 'queue', 'play_media', 'append', 'sleep_timer'];
 
 export const PLAYBACK_STATES = ['playing', 'paused', 'idle'];
 export const REPEAT_MODES = ['off', 'all', 'one'];
 export const MEDIA_TYPES = ['album', 'playlist', 'smart', 'track', 'album_radio', 'artist_radio'];
 export const PLAY_MODES = ['replace', 'next', 'append'];
+// Sleep timer: playback pauses after `minutes` (0 cancels), or at the end of
+// the current track. The players fade out over the last seconds.
+export const SLEEP_TIMER_MAX_MINUTES = 720;
 
 // command -> capability it needs (null: every player)
 const COMMANDS = {
@@ -40,6 +43,7 @@ const COMMANDS = {
   repeat: 'repeat',
   play_index: 'queue',
   play_media: 'play_media',
+  sleep_timer: 'sleep_timer',
 };
 
 export function parseCapabilities(raw) {
@@ -110,6 +114,18 @@ export function validateCommand(body, capabilities) {
       command.mode = mode;
       break;
     }
+    case 'sleep_timer':
+      if (body.end_of_track === true) {
+        command.end_of_track = true;
+      } else if (Number.isInteger(body.minutes) && body.minutes >= 0 && body.minutes <= SLEEP_TIMER_MAX_MINUTES) {
+        command.minutes = body.minutes;
+      } else {
+        return {
+          status: 400,
+          error: `minutes must be an integer between 0 (cancel) and ${SLEEP_TIMER_MAX_MINUTES}, or end_of_track true`,
+        };
+      }
+      break;
     default:
       break;
   }
@@ -129,6 +145,14 @@ export function parseLiveState(body) {
   if (typeof body.muted === 'boolean') state.muted = body.muted;
   if (typeof body.shuffle === 'boolean') state.shuffle = body.shuffle;
   if (REPEAT_MODES.includes(body.repeat)) state.repeat = body.repeat;
+  // Sleep timer: null (none), { ends_at } (ISO date) or { end_of_track: true }.
+  if (body.sleep_timer === null) {
+    state.sleep_timer = null;
+  } else if (body.sleep_timer?.end_of_track === true) {
+    state.sleep_timer = { end_of_track: true };
+  } else if (typeof body.sleep_timer?.ends_at === 'string' && Number.isFinite(Date.parse(body.sleep_timer.ends_at))) {
+    state.sleep_timer = { ends_at: new Date(body.sleep_timer.ends_at).toISOString() };
+  }
   return state;
 }
 

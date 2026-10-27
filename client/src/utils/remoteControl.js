@@ -8,11 +8,12 @@
 // controller shows. See server/src/utils/remote.js.
 
 import { getDeviceId, getDeviceLabel } from './deviceId.js';
+import { sleepTimerLive } from './sleepTimer.js';
 
 const STORAGE_KEY = 'jewelbox-remote-control';
 
 // What this player supports beyond play / pause / next / previous.
-export const CAPABILITIES = ['seek', 'volume', 'mute', 'shuffle', 'repeat', 'queue', 'play_media', 'append'];
+export const CAPABILITIES = ['seek', 'volume', 'mute', 'shuffle', 'repeat', 'queue', 'play_media', 'append', 'sleep_timer'];
 
 // While playing, a report at least this often: without a stream the server
 // forgets a player silent for 90 s.
@@ -47,8 +48,9 @@ export function remoteEventsUrl() {
 }
 
 // The live state the server expects, from the player's own values.
-export function liveStateOf({ current, index, playing, currentTime, duration, volume, muted, shuffle, repeat }) {
+export function liveStateOf({ current, index, playing, currentTime, duration, volume, muted, shuffle, repeat, sleepTimer }) {
   return {
+    sleep_timer: sleepTimerLive(sleepTimer),
     playback_state: current ? (playing ? 'playing' : 'paused') : 'idle',
     ...(current ? { track_id: current.id } : {}),
     current_index: current ? index : -1,
@@ -64,7 +66,8 @@ export function liveStateOf({ current, index, playing, currentTime, duration, vo
 const sameShown = (a, b) => {
   for (const key of Object.keys({ ...a, ...b })) {
     if (key === 'position_sec' || key === 'duration_sec') continue;
-    if (a[key] !== b[key]) return false;
+    // sleep_timer is an object: compared by value.
+    if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) return false;
   }
   return true;
 };
@@ -125,6 +128,8 @@ export function runCommand(player, command) {
       return player.jumpTo(command.index);
     case 'play_media':
       return player.playMedia(command.media || {}, command.mode || 'replace');
+    case 'sleep_timer':
+      return player.setSleepTimer(command);
     default:
       return undefined;
   }

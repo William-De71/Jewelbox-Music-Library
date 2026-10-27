@@ -111,8 +111,15 @@ describe('liveStateOf', () => {
       volume: 0.5, muted: false, shuffle: true, repeat: 'all',
     })).toEqual({
       playback_state: 'playing', track_id: 2, current_index: 1, position_sec: 12.3, duration_sec: 200,
-      volume: 50, muted: false, shuffle: true, repeat: 'all',
+      volume: 50, muted: false, shuffle: true, repeat: 'all', sleep_timer: null,
     });
+  });
+
+  it('reports the sleep timer', () => {
+    const base = { current: TRACKS[0], index: 0, playing: true, currentTime: 0, duration: 200, volume: 1, repeat: 'off' };
+    expect(liveStateOf({ ...base, sleepTimer: { endOfTrack: true } }).sleep_timer).toEqual({ end_of_track: true });
+    expect(liveStateOf({ ...base, sleepTimer: { endsAt: Date.UTC(2026, 9, 27, 22, 30) } }).sleep_timer)
+      .toEqual({ ends_at: '2026-10-27T22:30:00.000Z' });
   });
 
   it('is idle without a track', () => {
@@ -141,6 +148,13 @@ describe('createLiveReporter', () => {
     expect(reporter.update(live({ position_sec: 50 }), 1000)).toBe(true);
     expect(reporter.update(live({ position_sec: 50 + HEARTBEAT_MS / 1000 - 1 }), HEARTBEAT_MS - 1000 + 1000)).toBe(false);
     expect(reporter.update(live({ position_sec: 50 + HEARTBEAT_MS / 1000 }), HEARTBEAT_MS + 1000)).toBe(true);
+  });
+
+  it('reports a sleep timer change, compared by value', () => {
+    const reporter = createLiveReporter();
+    reporter.update(live({ sleep_timer: null }), 0);
+    expect(reporter.update(live({ sleep_timer: { end_of_track: true } }), 100)).toBe(true);
+    expect(reporter.update(live({ sleep_timer: { end_of_track: true } }), 200)).toBe(false);
   });
 
   it('reports again after forget', () => {
@@ -208,6 +222,10 @@ describe('PlayerContext remote control', () => {
     expect(ref.player.shuffle).toBe(true);
     await send({ command: 'shuffle', shuffle: true });
     expect(ref.player.shuffle).toBe(true);
+    await send({ command: 'sleep_timer', end_of_track: true });
+    expect(ref.player.sleepTimer).toEqual({ endOfTrack: true });
+    await send({ command: 'sleep_timer', minutes: 0 });
+    expect(ref.player.sleepTimer).toBeNull();
   });
 
   it('plays the current queue index without restarting it', async () => {
