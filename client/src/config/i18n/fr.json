@@ -269,7 +269,11 @@
     "sortArtistAsc": "Artiste A→Z",
     "sortArtistDesc": "Artiste Z→A",
     "allArtists": "Tous les artistes",
-    "allArtistsShort": "Tous"
+    "allArtistsShort": "Tous",
+    "audioAll": "Toute la musique",
+    "audioNone": "Sans musique",
+    "audioMp3": "Avec du MP3",
+    "audioNoResults": "Aucun CD ne correspond à ce filtre."
   },
   "stats": {
     "albums": "{count} album",

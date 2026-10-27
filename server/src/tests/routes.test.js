@@ -131,6 +131,28 @@ describe('GET /albums', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().data).toHaveLength(1);
   });
+
+  it('filters by linked audio files (none / mp3)', async () => {
+    const make = async (title) => (await app.inject({
+      method: 'POST', url: '/albums', payload: { title, artist_name: 'Audio Filter' },
+    })).json().id;
+    const flacId = await make('Audio FLAC');
+    const mixedId = await make('Audio Mixed');
+    const emptyId = await make('Audio Empty');
+    const track = testDb.prepare('INSERT INTO tracks (album_id, position, title, file_path) VALUES (?, ?, ?, ?)');
+    track.run(flacId, 1, 'A', '/music/a.flac');
+    track.run(mixedId, 1, 'B', '/music/b.flac');
+    track.run(mixedId, 2, 'C', '/music/c.MP3');
+    track.run(emptyId, 1, 'D', null);
+
+    const titles = async (audio) => (await app.inject({
+      method: 'GET', url: `/albums?search=Audio&limit=50&audio=${audio}`,
+    })).json().data.map(a => a.title).sort();
+
+    expect(await titles('none')).toEqual(['Audio Empty']);
+    expect(await titles('mp3')).toEqual(['Audio Mixed']);
+    expect(await titles('')).toEqual(['Audio Empty', 'Audio FLAC', 'Audio Mixed']);
+  });
 });
 
 // ── GET /albums/genres ────────────────────────────────────────────────────────

@@ -437,6 +437,19 @@ export async function playerRoutes(fastify) {
     }
   });
 
+  // Refresh button of the players' home: draws a new set of suggestions for
+  // the rest of the day (the albums shown in the recent section stay out).
+  fastify.post('/player/home/suggestions', async (req, reply) => {
+    try {
+      const excludeIds = getRecentPlayedItems(8)
+        .filter(e => e.item_type === 'album')
+        .map(e => e.album.id);
+      return { suggestions: getSuggestedAlbums({ excludeIds, limit: 12, redraw: true }) };
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
   // Library search for the app's search tab: album titles and artist names via
   // getAlbums, track titles via searchTracks. Owned collection only, capped
   // (30 albums / 100 tracks) instead of paginated.

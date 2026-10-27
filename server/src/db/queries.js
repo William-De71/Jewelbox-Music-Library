@@ -75,7 +75,7 @@ function mapAlbum(row) {
   };
 }
 
-export function getAlbums({ page = 1, limit = 24, genre, rating, sort = 'title', order = 'asc', search, lent, wanted, letter } = {}) {
+export function getAlbums({ page = 1, limit = 24, genre, rating, sort = 'title', order = 'asc', search, lent, wanted, letter, audio } = {}) {
   const db = getDb();
   const offset = (page - 1) * limit;
   const conditions = [];
@@ -91,6 +91,14 @@ export function getAlbums({ page = 1, limit = 24, genre, rating, sort = 'title',
   if (wanted === 'true' || wanted === true) { conditions.push('a.is_wanted = 1'); }
   if (wanted === 'false' || wanted === false) { conditions.push('a.is_wanted = 0'); }
   if (letter) { conditions.push("UPPER(SUBSTR(ar.name, 1, 1)) = ?"); params.push(letter.toUpperCase()); }
+  // Audio files linked by the scan: 'none' = no track has a file, 'mp3' = at
+  // least one track is an MP3 (the library is meant to be FLAC).
+  if (audio === 'none') {
+    conditions.push('NOT EXISTS(SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.file_path IS NOT NULL)');
+  }
+  if (audio === 'mp3') {
+    conditions.push("EXISTS(SELECT 1 FROM tracks t WHERE t.album_id = a.id AND LOWER(t.file_path) LIKE '%.mp3')");
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const validSorts = { title: 'a.title', artist: 'ar.name', year: 'a.year', rating: 'a.rating', created_at: 'a.created_at' };
@@ -1010,17 +1018,20 @@ export function drawSuggestedAlbums({ excludeIds = [], limit = 12 } = {}) {
 // The suggestions are meant to be a stable "what to listen to today", not a
 // reshuffle on every screen refresh: the drawn set is stored and reused until
 // the local day changes. Albums deleted meanwhile simply drop out (FK cascade).
-export function getSuggestedAlbums({ excludeIds = [], limit = 12 } = {}) {
+// redraw: true replaces the day's set on demand (the players' refresh button).
+export function getSuggestedAlbums({ excludeIds = [], limit = 12, redraw = false } = {}) {
   const db = getDb();
   const today = new Date().toLocaleDateString('sv-SE'); // local YYYY-MM-DD
-  const stored = db.prepare(`
-    ${ALBUM_SELECT}
-    JOIN suggested_albums s ON s.album_id = a.id
-    WHERE s.day = ?
-    ORDER BY s.position
-  `).all(today);
+  if (!redraw) {
+    const stored = db.prepare(`
+      ${ALBUM_SELECT}
+      JOIN suggested_albums s ON s.album_id = a.id
+      WHERE s.day = ?
+      ORDER BY s.position
+    `).all(today);
 
-  if (stored.length) return stored.map(mapAlbum);
+    if (stored.length) return stored.map(mapAlbum);
+  }
 
   const drawn = drawSuggestedAlbums({ excludeIds, limit });
   db.transaction(() => {

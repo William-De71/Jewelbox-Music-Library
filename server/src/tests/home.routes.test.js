@@ -335,6 +335,41 @@ describe('GET /player/home', () => {
     expect(stored).toBe(12);
   });
 
+  it('redraws the suggestions on demand and keeps the new set for the day', async () => {
+    const artistId = testDb.prepare('SELECT id FROM artists LIMIT 1').get().id;
+    const insertAlbum = testDb.prepare('INSERT INTO albums (title, artist_id, rating) VALUES (?, ?, 3)');
+    const insertTrack = testDb.prepare(
+      'INSERT INTO tracks (album_id, position, title, file_path) VALUES (?, 1, ?, ?)',
+    );
+    for (let i = 0; i < 40; i++) {
+      const id = insertAlbum.run(`Candidate ${i}`, artistId).lastInsertRowid;
+      insertTrack.run(id, `Track ${i}`, `c/${i}.mp3`);
+    }
+    await postHistory('album', albumIds.rated5);
+
+    const first = (await getHome()).json().suggestions.map(a => a.id);
+    // 40+ candidates for 12 slots: two draws in a row being equal is negligible,
+    // but retry a couple of times rather than flake.
+    let redrawn;
+    for (let i = 0; i < 3; i++) {
+      const res = await app.inject({ method: 'POST', url: '/player/home/suggestions' });
+      expect(res.statusCode).toBe(200);
+      redrawn = res.json().suggestions.map(a => a.id);
+      if (JSON.stringify(redrawn) !== JSON.stringify(first)) break;
+    }
+    expect(redrawn).toHaveLength(12);
+    expect(redrawn).not.toEqual(first);
+    expect(redrawn).not.toContain(albumIds.rated5); // shown in the recent section
+    expect((await getHome()).json().suggestions.map(a => a.id)).toEqual(redrawn);
+  });
+
+  it('returns 500 when the redraw fails', async () => {
+    getDb.mockImplementationOnce(() => { throw new Error('database is locked'); });
+    const res = await app.inject({ method: 'POST', url: '/player/home/suggestions' });
+    expect(res.statusCode).toBe(500);
+    expect(res.json().error).toBe('database is locked');
+  });
+
   it('drops a suggestion that entered the recent section after the draw', async () => {
     const suggested = (await getHome()).json().suggestions;
     expect(suggested.length).toBeGreaterThan(0);

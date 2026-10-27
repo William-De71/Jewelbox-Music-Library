@@ -33,7 +33,7 @@ export function Collections({ navigate, params = {} }) {
   const [filters, setFilters] = useState(() => {
     const savedSort = localStorage.getItem('jewelbox-collections-sort') || 'artist';
     const savedOrder = localStorage.getItem('jewelbox-collections-order') || 'asc';
-    return { genre: '', rating: '', search: params.search || '', sort: savedSort, order: savedOrder, letter: '' };
+    return { genre: '', rating: '', search: params.search || '', sort: savedSort, order: savedOrder, letter: '', audio: '' };
   });
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [lendTarget, setLendTarget] = useState(null);
@@ -178,6 +178,8 @@ export function Collections({ navigate, params = {} }) {
   };
 
   const stats = { total, lent: albums.filter(a => a.is_lent).length };
+  // Nothing at all in the collection (vs. nothing matching the search/filters).
+  const emptyCollection = total === 0 && !filters.search && !filters.audio;
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => {
@@ -317,7 +319,7 @@ export function Collections({ navigate, params = {} }) {
                       </select>
                     </div>
                   </div>
-                  <div class="col-12 col-md-5">
+                  <div class="col-12 col-md-3">
                     <div class="input-group">
                       <input
                         type="text"
@@ -338,6 +340,13 @@ export function Collections({ navigate, params = {} }) {
                         </button>
                       )}
                     </div>
+                  </div>
+                  <div class="col-12 col-sm-6 col-md-2">
+                    <select class="form-select" value={filters.audio} onChange={(e) => setFilter('audio', e.target.value)}>
+                      <option value="">{t('filters.audioAll')}</option>
+                      <option value="none">{t('filters.audioNone')}</option>
+                      <option value="mp3">{t('filters.audioMp3')}</option>
+                    </select>
                   </div>
                   <div class="col-12 col-sm-6 col-md-2">
                     <select class="form-select" value={`${filters.sort}_${filters.order}`} onChange={(e) => {
@@ -487,25 +496,27 @@ export function Collections({ navigate, params = {} }) {
                 ) : (
                   <div class="empty">
                     <div class="empty-img">
-                      {total === 0 && !filters.search ? (
+                      {emptyCollection ? (
                         <Music size={48} class="text-muted mb-3" />
                       ) : (
                         <Search size={48} class="text-muted mb-3" />
                       )}
                     </div>
                     <p class="empty-title">
-                      {total === 0 && !filters.search ? t('dashboard.noAlbums') : t('dashboard.search.noResults')}
+                      {emptyCollection ? t('dashboard.noAlbums') : t('dashboard.search.noResults')}
                     </p>
                     <p class="empty-subtitle text-muted">
-                      {total === 0 && !filters.search 
+                      {emptyCollection 
                         ? t('dashboard.addFirstAlbum')
                         : filters.search 
                           ? t('dashboard.search.noResultsMessage', { query: filters.search })
-                          : t('dashboard.search.noAlbumsMessage')
+                          : filters.audio
+                            ? t('filters.audioNoResults')
+                            : t('dashboard.search.noAlbumsMessage')
                       }
                     </p>
                     <div class="mt-3">
-                      {total === 0 && !filters.search ? (
+                      {emptyCollection ? (
                         <button class="btn btn-primary" onClick={() => navigate('add', { returnPage: page })}>
                           <Plus size={16} class="me-1" />
                           {t('common.addAlbum')}
