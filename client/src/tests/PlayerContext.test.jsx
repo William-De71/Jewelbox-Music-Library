@@ -20,6 +20,7 @@ vi.mock('../api/client.js', () => {
     getSmartPlaylist: vi.fn(() => Promise.resolve({ tracks: [] })),
     dynamicMixPlayed: vi.fn(() => Promise.resolve({ tracks: [] })),
     dynamicMixRemove: vi.fn(() => Promise.resolve({ tracks: [] })),
+    dynamicMixBlock: vi.fn(() => Promise.resolve({ tracks: [] })),
     dynamicMixRefresh: vi.fn(() => Promise.resolve({ tracks: [] })),
     // Empty queue by default: tests start from a clean player.
     getQueue: vi.fn(() => Promise.resolve({ tracks: [], current_index: -1, position_sec: 0 })),
@@ -318,6 +319,22 @@ describe('PlayerContext dynamic mix', () => {
     expect(player.queue.map(t => t.id)).toEqual([5, 6, 7, 8, 9, 10, 11, 12]);
     expect(fakeAudio.src).toContain('/tracks/5/stream');
     api.dynamicMixPlayed.mockImplementation(() => Promise.resolve({ tracks: [] }));
+  });
+
+  it('"never play again" blocks the track and the playing queue follows', async () => {
+    const { api } = await import('../api/client.js');
+    api.dynamicMixRemove.mockClear();
+    api.dynamicMixBlock.mockImplementation(() => Promise.resolve({ tracks: [1, 3, 4].map(mixTrack) }));
+    let player;
+    harness((p) => { player = p; });
+    await act(async () => { player.playTracks([1, 2, 3].map(mixTrack), 0, { dynamic: true }); });
+    let tracks;
+    await act(async () => { tracks = await player.removeDynamicMixTrack(2, { block: true }); });
+    expect(api.dynamicMixBlock).toHaveBeenCalledWith(2);
+    expect(api.dynamicMixRemove).not.toHaveBeenCalled();
+    expect(tracks.map(t => t.id)).toEqual([1, 3, 4]);
+    expect(player.queue.map(t => t.id)).toEqual([1, 3, 4]);
+    api.dynamicMixBlock.mockImplementation(() => Promise.resolve({ tracks: [] }));
   });
 
   it('leaves an ordinary queue alone', async () => {

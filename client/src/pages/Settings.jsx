@@ -8,7 +8,8 @@ import { REPLAYGAIN_MODES, getReplayGainMode, setReplayGainMode } from '../utils
 import { BackupSettings } from '../components/BackupSettings.jsx';
 import { TRANSITION_FADE_CHOICES, getTransitionFade, setTransitionFade } from '../utils/transitionFade.js';
 import { LyricsSetting } from '../components/LyricsSetting.jsx';
-import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music, Radio, Cast, Volume2, Archive, MicVocal } from 'lucide-preact';
+import { MixBlocklistSetting } from '../components/MixBlocklistSetting.jsx';
+import { Database, Plus, Play, Trash2, Edit, Check, X, Settings as SettingsIcon, Disc, Key, ExternalLink, ShieldCheck, ShieldOff, Download, Upload, FileText, FolderSearch, Music, Radio, Cast, Volume2, Archive, MicVocal, Ban } from 'lucide-preact';
 
 export function Settings({ navigate }) {
   const { t } = useI18n();
@@ -654,6 +655,23 @@ export function Settings({ navigate }) {
                   ))}
                 </select>
                 <p class="text-muted small mb-0">{t('transitionFade.hint')}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Dynamic mix blocklist (server side) */}
+        <div class="row mt-4">
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <h3 class="card-title fs-5 mb-0">
+                  <Ban size={18} class="me-2" />
+                  {t('mixBlocklist.title')}
+                </h3>
+              </div>
+              <div class="card-body">
+                <MixBlocklistSetting notify={showToast} />
               </div>
             </div>
           </div>

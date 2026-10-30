@@ -286,9 +286,10 @@ export function PlayerProvider({ children }) {
 
   // Manual removal of a disliked track from the dynamic mix. When the mix is
   // playing, the queue follows; removing the current track skips to the next.
+  // block: also blacklist it, so the mix never draws it again.
   // Returns the fresh server list so callers can update their own display.
-  const removeDynamicMixTrack = useCallback(async (trackId) => {
-    const res = await api.dynamicMixRemove(trackId);
+  const removeDynamicMixTrack = useCallback(async (trackId, { block = false } = {}) => {
+    const res = await (block ? api.dynamicMixBlock(trackId) : api.dynamicMixRemove(trackId));
     if (dynamicMixRef.current) {
       const q = queueRef.current;
       const i = indexRef.current;

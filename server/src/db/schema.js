@@ -80,6 +80,11 @@ export const SCHEMA = `
     track_id INTEGER NOT NULL UNIQUE REFERENCES tracks(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS dynamic_mix_blocked (
+    track_id   INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    blocked_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS track_plays (
     id        INTEGER PRIMARY KEY AUTOINCREMENT,
     track_id  INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,

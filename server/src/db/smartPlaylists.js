@@ -41,19 +41,21 @@ const DEFINITIONS = {
   most_played: { where: 'AND t.play_count > 0', order: 't.play_count DESC, t.last_played_at DESC', limit: 100 },
   favourites: { where: 'AND t.is_favorite = 1', order: ALPHA_ORDER, limit: null },
   all_tracks: { where: '', order: ALPHA_ORDER, limit: null },
-  dynamic_mix: { where: '', order: null, limit: DYNAMIC_MIX_SIZE }, // persistent, see below
+  // persistent, see below; blocked tracks are never drawn
+  dynamic_mix: { where: 'AND t.id NOT IN (SELECT track_id FROM dynamic_mix_blocked)', order: null, limit: DYNAMIC_MIX_SIZE },
 };
 
 export const SMART_PLAYLIST_KEYS = Object.keys(DEFINITIONS);
 
 // The dynamic mix is persistent: its tracks live in dynamic_mix_tracks
 // (insertion order = list order) so the list survives refreshes. Drops
-// unplayable rows, then appends random tracks at the bottom until the list
+// unplayable or blocked rows, then appends random tracks at the bottom until the list
 // holds 50 (or the whole library, whichever is smaller). avoidIds keeps
 // just-consumed tracks from being re-picked immediately, unless the library
 // is too small for that.
 function ensureDynamicMix(db, { avoidIds = [] } = {}) {
-  db.prepare(`DELETE FROM dynamic_mix_tracks WHERE track_id NOT IN (SELECT t.id ${BASE_FROM})`).run();
+  const { where } = DEFINITIONS.dynamic_mix;
+  db.prepare(`DELETE FROM dynamic_mix_tracks WHERE track_id NOT IN (SELECT t.id ${BASE_FROM} ${where})`).run();
   const fill = (avoid) => {
     const { count } = db.prepare('SELECT COUNT(*) AS count FROM dynamic_mix_tracks').get();
     const missing = DYNAMIC_MIX_SIZE - count;
@@ -61,7 +63,7 @@ function ensureDynamicMix(db, { avoidIds = [] } = {}) {
     const notAvoided = avoid.length ? `AND t.id NOT IN (${avoid.map(() => '?').join(',')})` : '';
     db.prepare(`
       INSERT INTO dynamic_mix_tracks (track_id)
-      SELECT t.id ${BASE_FROM} ${notAvoided}
+      SELECT t.id ${BASE_FROM} ${where} ${notAvoided}
         AND t.id NOT IN (SELECT track_id FROM dynamic_mix_tracks)
       ORDER BY RANDOM() LIMIT ${missing}
     `).run(...avoid);
@@ -94,6 +96,35 @@ export function consumeDynamicMixTrack(trackId) {
   const removed = db.prepare('DELETE FROM dynamic_mix_tracks WHERE track_id = ?').run(trackId).changes > 0;
   ensureDynamicMix(db, { avoidIds: removed ? [trackId] : [] });
   return { removed, tracks: getDynamicMixTracks(db) };
+}
+
+// "Never play again": blocks the track for good, then drops it from the list
+// like a played one (same response shape as consumeDynamicMixTrack).
+export function blockDynamicMixTrack(trackId) {
+  const db = getDb();
+  db.prepare('INSERT OR IGNORE INTO dynamic_mix_blocked (track_id) SELECT id FROM tracks WHERE id = ?').run(trackId);
+  return consumeDynamicMixTrack(trackId);
+}
+
+// The blocked tracks, most recently blocked first.
+export function getBlockedDynamicMixTracks() {
+  return getDb()
+    .prepare(`SELECT ${QUEUE_TRACK_FIELDS} FROM dynamic_mix_blocked b JOIN tracks t ON t.id = b.track_id
+      JOIN albums a ON a.id = t.album_id
+      JOIN artists ar ON ar.id = a.artist_id
+      ORDER BY b.blocked_at DESC`)
+    .all()
+    .map(mapQueueTrack);
+}
+
+// Lets one track back into the draw; returns whether it was blocked.
+export function unblockDynamicMixTrack(trackId) {
+  return getDb().prepare('DELETE FROM dynamic_mix_blocked WHERE track_id = ?').run(trackId).changes > 0;
+}
+
+// Empties the blocklist; returns how many tracks were let back in.
+export function clearBlockedDynamicMixTracks() {
+  return getDb().prepare('DELETE FROM dynamic_mix_blocked').run().changes;
 }
 
 // Effective cap for a list: the caller's rankingLimit applies to the "top N"

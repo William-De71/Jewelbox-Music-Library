@@ -147,6 +147,10 @@ export const api = {
   dynamicMixPlayed: (track_id) => request('POST', '/smart-playlists/dynamic_mix/played', { track_id }),
   dynamicMixRemove: (track_id) => request('DELETE', `/smart-playlists/dynamic_mix/tracks/${track_id}`),
   dynamicMixRefresh: () => request('POST', '/smart-playlists/dynamic_mix/refresh'),
+  // Blocklist ("never play again"), server >= 1.22.
+  dynamicMixBlock: (track_id) => request('POST', '/smart-playlists/dynamic_mix/blocked', { track_id }),
+  dynamicMixBlocked: () => request('GET', '/smart-playlists/dynamic_mix/blocked'),
+  dynamicMixClearBlocked: () => request('DELETE', '/smart-playlists/dynamic_mix/blocked'),
 
   // Last.fm
   lastfmConnectUrl: () => request('GET', `/lastfm/connect?origin=${encodeURIComponent(window.location.origin)}`),
