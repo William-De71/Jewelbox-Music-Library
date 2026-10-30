@@ -517,6 +517,8 @@
     "mixRefreshed": "Nouveau mix généré",
     "mixRemove": "Retirer du mix",
     "mixRemoved": "Piste retirée du mix",
+    "mixBlock": "Ne plus jamais jouer",
+    "mixBlocked": "Ce titre ne sera plus joué dans le mix",
     "smart": {
       "newest": "Ajouts récents",
       "ever_played": "Déjà écoutées",
@@ -549,6 +551,18 @@
     "off": "Désactivé",
     "seconds": "{seconds} secondes",
     "hint": "Le son baisse à la fin d'un morceau et remonte au début du suivant. Jamais entre deux pistes qui se suivent sur un même album : un album live reste sans blanc."
+  },
+  "mixBlocklist": {
+    "title": "Mix dynamique : titres exclus",
+    "description": "Les titres marqués « Ne plus jamais jouer » ne sont plus tirés dans le mix dynamique, sur tous vos appareils.",
+    "none": "Aucun titre exclu.",
+    "count": "{count} titre exclu",
+    "countPlural": "{count} titres exclus",
+    "unavailable": "Liste indisponible pour le moment.",
+    "clear": "Vider la liste noire",
+    "confirm": "Tous les titres exclus pourront de nouveau être tirés.",
+    "clearConfirm": "Vider",
+    "cleared": "Liste noire vidée"
   },
   "lyrics": {
     "title": "Paroles",

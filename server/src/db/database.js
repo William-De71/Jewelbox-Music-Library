@@ -89,6 +89,16 @@ function runMigrations(database) {
     `);
     console.log('[Migration] Created dynamic_mix_tracks table');
   }
+  // Tracks the user never wants the dynamic mix to draw again.
+  if (!tables.includes('dynamic_mix_blocked')) {
+    database.exec(`
+      CREATE TABLE dynamic_mix_blocked (
+        track_id   INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+        blocked_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    console.log('[Migration] Created dynamic_mix_blocked table');
+  }
   if (!tables.includes('play_history')) {
     database.exec(`
       CREATE TABLE play_history (

@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import { api } from '../api/client.js';
 import { useI18n } from '../config/i18n/index.jsx';
 import { usePlayer } from '../components/PlayerContext.jsx';
 import {
   ListMusic, Plus, Play, Pause, Pencil, Trash2, X, Check, ArrowLeft,
   ChevronUp, ChevronDown, AlertCircle, Clock, Heart, RefreshCw,
-  Sparkles, History, Music, ChartColumn, Library, Infinity as InfinityIcon,
+  Sparkles, History, Music, ChartColumn, Library, Infinity as InfinityIcon, Ban,
 } from 'lucide-preact';
 
 const SMART_KEYS = [
@@ -18,6 +18,63 @@ const SMART_ICONS = {
   last_played: Clock, most_played: ChartColumn, favourites: Heart,
   all_tracks: Library, dynamic_mix: InfinityIcon,
 };
+
+// Dynamic mix row: drop the track from this mix only, or never play it again.
+// The menu is position:fixed so the table's scroll container doesn't clip it.
+function MixRemoveMenu({ onRemove }) {
+  const { t } = useI18n();
+  const rootRef = useRef(null);
+  const [pos, setPos] = useState(null);
+
+  useEffect(() => {
+    if (!pos) return undefined;
+    const close = (e) => {
+      if (e.type === 'mousedown' && rootRef.current?.contains(e.target)) return;
+      setPos(null);
+    };
+    document.addEventListener('mousedown', close);
+    window.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', close, true);
+    };
+  }, [pos]);
+
+  const toggle = (e) => {
+    if (pos) return setPos(null);
+    const r = e.currentTarget.getBoundingClientRect();
+    return setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+  };
+  const pick = (block) => {
+    setPos(null);
+    onRemove(block);
+  };
+
+  return (
+    <span ref={rootRef}>
+      <button
+        type="button"
+        class="btn btn-sm btn-icon btn-ghost-danger"
+        onClick={toggle}
+        aria-expanded={!!pos}
+        aria-haspopup="menu"
+        title={t('playlists.mixRemove')}
+      >
+        <Trash2 size={14} />
+      </button>
+      {pos && (
+        <div class="dropdown-menu show" role="menu" style={{ position: 'fixed', top: pos.top, right: pos.right, left: 'auto', zIndex: 1100 }}>
+          <button type="button" class="dropdown-item" role="menuitem" onClick={() => pick(false)}>
+            <Trash2 size={14} class="me-2" />{t('playlists.mixRemove')}
+          </button>
+          <button type="button" class="dropdown-item text-danger" role="menuitem" onClick={() => pick(true)}>
+            <Ban size={14} class="me-2" />{t('playlists.mixBlock')}
+          </button>
+        </div>
+      )}
+    </span>
+  );
+}
 
 function formatSeconds(total) {
   if (!total) return '—';
@@ -185,11 +242,11 @@ export function Playlists({ navigate, params }) {
     }
   };
 
-  const handleRemoveMixTrack = async (track) => {
+  const handleRemoveMixTrack = async (track, block = false) => {
     try {
-      const tracks = await removeDynamicMixTrack(track.id);
+      const tracks = await removeDynamicMixTrack(track.id, { block });
       setSmart({ key: 'dynamic_mix', tracks });
-      showToast(t('playlists.mixRemoved'));
+      showToast(t(block ? 'playlists.mixBlocked' : 'playlists.mixRemoved'));
     } catch (err) {
       showToast(err.message, 'danger');
     }
@@ -309,13 +366,7 @@ export function Playlists({ navigate, params }) {
                               <Heart size={14} fill={track.is_favorite ? 'currentColor' : 'none'} />
                             </button>
                             {smartKey === 'dynamic_mix' && (
-                              <button
-                                class="btn btn-sm btn-icon btn-ghost-danger"
-                                onClick={() => handleRemoveMixTrack(track)}
-                                title={t('playlists.mixRemove')}
-                              >
-                                <Trash2 size={14} />
-                              </button>
+                              <MixRemoveMenu onRemove={(block) => handleRemoveMixTrack(track, block)} />
                             )}
                           </td>
                         </tr>

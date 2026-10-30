@@ -263,3 +263,59 @@ describe('?limit= validation', () => {
     expect(high.statusCode).toBe(200);
   });
 });
+
+describe('dynamic mix blocklist', () => {
+  const getIds = async () =>
+    (await app.inject({ method: 'GET', url: '/smart-playlists/dynamic_mix' })).json().tracks.map(t => t.id);
+  const getBlocked = async () =>
+    (await app.inject({ method: 'GET', url: '/smart-playlists/dynamic_mix/blocked' })).json().data.map(t => t.id);
+
+  it('a blocked track leaves the mix and is never drawn again', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/smart-playlists/dynamic_mix/blocked', payload: { track_id: ids.paranoid },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().removed).toBe(true);
+    expect(res.json().tracks.map(t => t.id)).not.toContain(ids.paranoid);
+    expect(await getBlocked()).toEqual([ids.paranoid]);
+
+    // Even a full redraw of a tiny library (where avoidance gives up) skips it.
+    const refreshed = await app.inject({ method: 'POST', url: '/smart-playlists/dynamic_mix/refresh' });
+    expect(refreshed.json().tracks.map(t => t.id).sort()).toEqual([ids.airbag, ids.neverPlayed].sort());
+    const list = await app.inject({ method: 'GET', url: '/smart-playlists' });
+    expect(list.json().data.find(p => p.key === 'dynamic_mix').track_count).toBe(2);
+  });
+
+  it('blocking twice or an unknown track is harmless', async () => {
+    await app.inject({ method: 'POST', url: '/smart-playlists/dynamic_mix/blocked', payload: { track_id: ids.paranoid } });
+    const unknown = await app.inject({
+      method: 'POST', url: '/smart-playlists/dynamic_mix/blocked', payload: { track_id: 99999 },
+    });
+    expect(unknown.statusCode).toBe(200);
+    expect(await getBlocked()).toEqual([ids.paranoid]);
+  });
+
+  it('rejects a non-integer track_id', async () => {
+    const res = await app.inject({
+      method: 'POST', url: '/smart-playlists/dynamic_mix/blocked', payload: { track_id: 'abc' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('unblocking one track lets it back into the draw', async () => {
+    const res = await app.inject({ method: 'DELETE', url: `/smart-playlists/dynamic_mix/blocked/${ids.paranoid}` });
+    expect(res.json().unblocked).toBe(true);
+    expect(await getBlocked()).toEqual([]);
+    expect(await getIds()).toContain(ids.paranoid);
+  });
+
+  it('clearing empties the whole blocklist', async () => {
+    for (const id of [ids.airbag, ids.paranoid]) {
+      await app.inject({ method: 'POST', url: '/smart-playlists/dynamic_mix/blocked', payload: { track_id: id } });
+    }
+    const res = await app.inject({ method: 'DELETE', url: '/smart-playlists/dynamic_mix/blocked' });
+    expect(res.json().cleared).toBe(2);
+    expect(await getBlocked()).toEqual([]);
+    expect((await getIds()).sort()).toEqual([ids.airbag, ids.paranoid, ids.neverPlayed].sort());
+  });
+});

@@ -3,6 +3,10 @@ import {
   getSmartPlaylistTracks,
   consumeDynamicMixTrack,
   refreshDynamicMix,
+  blockDynamicMixTrack,
+  getBlockedDynamicMixTracks,
+  unblockDynamicMixTrack,
+  clearBlockedDynamicMixTracks,
   parseRankingLimit,
 } from '../db/smartPlaylists.js';
 
@@ -35,6 +39,44 @@ export async function smartPlaylistRoutes(fastify) {
       const trackId = Number(req.params.trackId);
       if (!Number.isInteger(trackId)) return reply.code(400).send({ error: 'trackId must be an integer' });
       return consumeDynamicMixTrack(trackId);
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Blocklist: tracks the dynamic mix must never draw again.
+  fastify.get('/smart-playlists/dynamic_mix/blocked', async (req, reply) => {
+    try {
+      return { data: getBlockedDynamicMixTracks() };
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // "Never play again": block the track, drop it from the list and refill.
+  fastify.post('/smart-playlists/dynamic_mix/blocked', async (req, reply) => {
+    try {
+      const trackId = Number(req.body?.track_id);
+      if (!Number.isInteger(trackId)) return reply.code(400).send({ error: 'track_id must be an integer' });
+      return blockDynamicMixTrack(trackId);
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  fastify.delete('/smart-playlists/dynamic_mix/blocked/:trackId', async (req, reply) => {
+    try {
+      const trackId = Number(req.params.trackId);
+      if (!Number.isInteger(trackId)) return reply.code(400).send({ error: 'trackId must be an integer' });
+      return { unblocked: unblockDynamicMixTrack(trackId) };
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  fastify.delete('/smart-playlists/dynamic_mix/blocked', async (req, reply) => {
+    try {
+      return { cleared: clearBlockedDynamicMixTracks() };
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }
