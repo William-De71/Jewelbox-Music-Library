@@ -5,7 +5,7 @@ import { parseRankingLimit } from '../db/smartPlaylists.js';
 import { getRadio, RADIO_DEFAULT_SIZE, RADIO_MAX_SIZE } from '../db/radio.js';
 import { getListeningStats, LISTENING_PERIODS, sqlUtc } from '../db/listening.js';
 import { getSetting, setSetting } from '../db/settings.js';
-import { MISS_RETRY_DAYS, fetchLrclib, lyricsPayload, readLocalLrc } from '../utils/lyrics.js';
+import { MISS_RETRY_DAYS, PLAIN_RETRY_DAYS, fetchLrclib, lyricsPayload, readLocalLrc } from '../utils/lyrics.js';
 import { startScan, getScanStatus, matchManualFolder, isAudioFile } from '../utils/audioScanner.js';
 import {
   getAlbumById,
@@ -158,9 +158,12 @@ export async function playerRoutes(fastify) {
       if (local) return lyricsPayload({ synced: local, source: 'file' });
 
       const cached = getCachedLyrics(track.id);
-      if (cached?.found) return lyricsPayload({ ...cached, source: 'lrclib' });
-      const missAge = cached ? (Date.now() - Date.parse(`${cached.fetched_at.replace(' ', 'T')}Z`)) / 86_400_000 : Infinity;
-      if (missAge < MISS_RETRY_DAYS || getSetting('lyrics_online') === '0') return lyricsPayload();
+      const age = cached ? (Date.now() - Date.parse(`${cached.fetched_at.replace(' ', 'T')}Z`)) / 86_400_000 : Infinity;
+      const offline = getSetting('lyrics_online') === '0';
+      // Plain lyrics only: looked up again once in a while, synced ones may have come.
+      const known = cached?.found ? lyricsPayload({ ...cached, source: 'lrclib' }) : lyricsPayload();
+      if (cached?.found && (cached.synced || cached.instrumental || age < PLAIN_RETRY_DAYS || offline)) return known;
+      if (!cached?.found && (age < MISS_RETRY_DAYS || offline)) return known;
 
       let found;
       try {
@@ -172,10 +175,12 @@ export async function playerRoutes(fastify) {
         });
       } catch (err) {
         req.log.warn(`[Lyrics] ${err.message}`);
-        return lyricsPayload(); // not cached: asked again next time
+        return known; // not cached: asked again next time
       }
-      cacheLyrics(track.id, found);
-      return found ? lyricsPayload({ ...found, source: 'lrclib' }) : lyricsPayload();
+      // Lyrics already known are kept when LRCLIB has nothing better now.
+      const kept = found ?? (cached?.found ? cached : null);
+      cacheLyrics(track.id, kept);
+      return kept ? lyricsPayload({ ...kept, source: 'lrclib' }) : lyricsPayload();
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }
