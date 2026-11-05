@@ -452,6 +452,22 @@ export function cacheLyrics(trackId, lyrics) {
   `).run(trackId, lyrics ? 1 : 0, lyrics?.synced ?? null, lyrics?.plain ?? null, lyrics?.instrumental ? 1 : 0);
 }
 
+export function getCustomLyrics(trackId) {
+  return getDb().prepare('SELECT text FROM track_custom_lyrics WHERE track_id = ?').get(trackId)?.text ?? null;
+}
+
+export function saveCustomLyrics(trackId, text) {
+  getDb().prepare(`
+    INSERT INTO track_custom_lyrics (track_id, text, updated_at)
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(track_id) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at
+  `).run(trackId, text);
+}
+
+export function deleteCustomLyrics(trackId) {
+  getDb().prepare('DELETE FROM track_custom_lyrics WHERE track_id = ?').run(trackId);
+}
+
 export function markTrackPlayed(trackId, playedAt = null) {
   const db = getDb();
   let changes = 0;

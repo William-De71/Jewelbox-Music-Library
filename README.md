@@ -90,7 +90,7 @@ Chaque appareil possède sa propre file, identifiée par un jeton local : le nav
 
 ### Paroles
 
-Dans le lecteur plein écran, l'onglet **Paroles** affiche les paroles du morceau : synchronisées (la ligne chantée suit la musique, un clic y saute) quand elles existent, sinon le texte. Le serveur prend d'abord un fichier `.lrc` posé à côté du fichier audio (même nom), puis interroge [LRCLIB](https://lrclib.net) (libre, sans compte) et garde la réponse. La recherche en ligne se coupe dans **Paramètres → Paroles**. Même chose dans les lecteurs bureau et Android.
+Dans le lecteur plein écran, l'onglet **Paroles** affiche les paroles du morceau : synchronisées (la ligne chantée suit la musique, un clic y saute) quand elles existent, sinon le texte. Le serveur prend d'abord les paroles saisies dans le lecteur bureau (texte simple, ou format LRC pour suivre la musique), puis un fichier `.lrc` posé à côté du fichier audio (même nom), puis interroge [LRCLIB](https://lrclib.net) (libre, sans compte) et garde la réponse. La recherche en ligne se coupe dans **Paramètres → Paroles**. Même chose dans les lecteurs bureau et Android.
 
 ### Fondu entre les morceaux
 

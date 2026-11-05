@@ -162,6 +162,47 @@ describe('GET /player/tracks/:id/lyrics', () => {
 
   const get = async (id = trackId) => app.inject({ method: 'GET', url: `/player/tracks/${id}/lyrics` });
 
+  const put = async (payload, id = trackId) => app.inject({ method: 'PUT', url: `/player/tracks/${id}/lyrics`, payload });
+
+  it('serves entered lyrics first, without asking LRCLIB, and gives the text back for editing', async () => {
+    fs.mkdirSync(path.join(lib, 'R/OKC'), { recursive: true });
+    fs.writeFileSync(path.join(lib, 'R/OKC/01.lrc'), '[00:01.00]From the file');
+
+    const saved = await put({ text: '  First line\nSecond line\n' });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toMatchObject({ source: 'custom', synced: false, plain: 'First line\nSecond line', text: 'First line\nSecond line' });
+
+    expect((await get()).json()).toMatchObject({ source: 'custom', plain: 'First line\nSecond line' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('follows the music when entered lyrics are timed, not for a stray timestamp', async () => {
+    const lrc = '[00:01.00]One\n[00:02.00]Two';
+    expect((await put({ text: lrc })).json()).toMatchObject({
+      synced: true, lines: [{ time: 1, text: 'One' }, { time: 2, text: 'Two' }], text: lrc,
+    });
+    const text = 'Verse one\nVerse two\n[1:30] solo';
+    expect((await put({ text })).json()).toMatchObject({ synced: false, lines: null, plain: text });
+  });
+
+  it('removing entered lyrics brings the found ones back, and a lookup never overwrites them', async () => {
+    db.prepare("INSERT INTO track_lyrics (track_id, found, plain) VALUES (?, 1, 'From LRCLIB')").run(trackId);
+    await put({ text: 'Mine' });
+    expect((await get()).json().plain).toBe('Mine');
+
+    const removed = await app.inject({ method: 'DELETE', url: `/player/tracks/${trackId}/lyrics` });
+    expect(removed.statusCode).toBe(204);
+    expect((await get()).json()).toMatchObject({ source: 'lrclib', plain: 'From LRCLIB' });
+  });
+
+  it('rejects empty or oversized lyrics and unknown tracks', async () => {
+    expect((await put({ text: '   ' })).statusCode).toBe(400);
+    expect((await put({ text: 3 })).statusCode).toBe(400);
+    expect((await put({ text: 'x'.repeat(100_001) })).statusCode).toBe(400);
+    expect((await put({ text: 'Words' }, 9999)).statusCode).toBe(404);
+    expect((await app.inject({ method: 'DELETE', url: '/player/tracks/9999/lyrics' })).statusCode).toBe(404);
+  });
+
   it('prefers a .lrc next to the file, without asking LRCLIB', async () => {
     fs.mkdirSync(path.join(lib, 'R/OKC'), { recursive: true });
     fs.writeFileSync(path.join(lib, 'R/OKC/01.lrc'), LRC);

@@ -200,6 +200,18 @@ function runMigrations(database) {
     `);
     console.log('[Migration] Created track_lyrics table');
   }
+  if (!tables.includes('track_custom_lyrics')) {
+    // Lyrics entered by the user, apart from the LRCLIB cache so that a lookup
+    // never overwrites them and removing them brings the found ones back.
+    database.exec(`
+      CREATE TABLE track_custom_lyrics (
+        track_id   INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+        text       TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+    console.log('[Migration] Created track_custom_lyrics table');
+  }
   if (!tables.includes('loan_history')) {
     database.exec(`
       CREATE TABLE loan_history (
