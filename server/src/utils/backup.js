@@ -21,6 +21,7 @@ const NAME = /^jewelbox-\d{8}-\d{6}(-\d{1,3})?$/;
 const COVER = /^[0-9a-f]{32}\.(jpe?g|png|webp)$/i;
 const MANIFEST = 'manifest.json';
 const COVERS = 'covers';
+const DB_FILE = /^\d+\.db$/;
 
 export const isBackupName = (name) => NAME.test(String(name ?? ''));
 
@@ -167,6 +168,58 @@ export function deleteBackup(root, name) {
   if (!readManifest(root, name)) return false;
   fs.rmSync(path.join(root, name), { recursive: true, force: true });
   return true;
+}
+
+// The files of a backup, as a tar archive laid out like the backup folder:
+// extracted into that folder, the backup is listed and can be restored. Null
+// for an unknown backup.
+export function backupArchive(root, name) {
+  const manifest = readManifest(root, name);
+  if (!manifest) return null;
+  const covers = new Set(manifest.databases.flatMap(d => d.covers).filter(c => COVER.test(c)));
+  const files = [
+    ...[MANIFEST, ...manifest.databases.map(d => d.file).filter(f => DB_FILE.test(f))]
+      .map(file => `${name}/${file}`),
+    ...[...covers].map(cover => `${COVERS}/${cover}`),
+  ];
+  return tarEntries(root, files);
+}
+
+// A ustar header: every number in octal, the checksum computed with its own
+// field filled with spaces. Our names always fit the 100 bytes of the format.
+function tarHeader(name, size, mtime) {
+  const header = Buffer.alloc(512);
+  const octal = (value, offset, length) =>
+    header.write(`${value.toString(8).padStart(length - 1, '0')}\0`, offset, 'latin1');
+  header.write(name, 0, 100, 'latin1');
+  octal(0o644, 100, 8);
+  octal(0, 108, 8);
+  octal(0, 116, 8);
+  octal(size, 124, 12);
+  octal(Math.floor(mtime / 1000), 136, 12);
+  header.write(' '.repeat(8), 148, 'latin1');
+  header.write('0', 156, 'latin1');
+  header.write('ustar\x0000', 257, 'latin1');
+  const sum = header.reduce((total, byte) => total + byte, 0);
+  header.write(`${sum.toString(8).padStart(6, '0')}\0 `, 148, 'latin1');
+  return header;
+}
+
+async function* tarEntries(root, files) {
+  for (const file of files) {
+    const source = path.join(root, file);
+    let stat;
+    try {
+      stat = fs.statSync(source);
+    } catch {
+      continue; // A cover gone from the shared folder: restore skips it too.
+    }
+    yield tarHeader(file, stat.size, stat.mtimeMs);
+    yield* fs.createReadStream(source);
+    const padding = (512 - (stat.size % 512)) % 512;
+    if (padding) yield Buffer.alloc(padding);
+  }
+  yield Buffer.alloc(1024); // End of archive: two empty blocks.
 }
 
 // Puts the collections of a backup back. `target(entry)` gives the database

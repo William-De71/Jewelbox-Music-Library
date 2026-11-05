@@ -163,6 +163,8 @@ serveur reste joignable normalement par son adresse IP.
 
 **Paramètres → Sauvegardes** : le serveur sauvegarde lui-même toutes les collections (bases SQLite, copiées à chaud, et pochettes), chaque jour ou chaque semaine à l'heure choisie, en gardant les N dernières. Un bouton lance une sauvegarde tout de suite ; chaque sauvegarde se restaure en un clic, après une copie de sécurité de l'état actuel. Choisissez de préférence un dossier sur un autre disque (un NAS monté dans le conteneur) : par défaut, les sauvegardes vont dans `data/backups`, sur le même volume que les données. Les réglages (bibliothèque musicale, Last.fm…) ne sont pas sauvegardés.
 
+Chaque sauvegarde se télécharge aussi depuis la liste, en archive `.tar.gz` (bases et pochettes). Pour la restaurer, extrayez-la dans le dossier des sauvegardes du serveur (`tar xzf jewelbox-….tar.gz -C <dossier>`) : elle apparaît dans la liste, prête à être restaurée.
+
 ## 🐳 Docker
 
 ### Lancement avec Docker Compose (recommandé)
@@ -182,7 +184,7 @@ Les bases de données et les pochettes sont persistées dans le volume `jewelbox
 
 ### Mise à jour depuis l'interface
 
-JewelBox vérifie les releases GitHub : quand une nouvelle version sort, une notification apparaît une fois et un lien « vX.Y.Z disponible » s'affiche dans le menu, avec les notes de version. Pour avoir aussi le bouton **Mettre à jour maintenant**, activez [Watchtower](https://github.com/nicholas-fedor/watchtower) dans `docker/.env` :
+JewelBox vérifie les releases GitHub : quand une nouvelle version sort, une notification apparaît une fois et un lien « vX.Y.Z disponible » s'affiche dans le menu, avec les notes de version. Le bouton **Rechercher une mise à jour**, dans la page **À propos**, lance la vérification tout de suite. Pour avoir aussi le bouton **Mettre à jour maintenant**, activez [Watchtower](https://github.com/nicholas-fedor/watchtower) dans `docker/.env` :
 
 ```bash
 COMPOSE_PROFILES=updater

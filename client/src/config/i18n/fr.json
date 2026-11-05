@@ -594,6 +594,7 @@
     "date": "Date",
     "contents": "Collections",
     "size": "Taille",
+    "download": "Télécharger (bases et pochettes)",
     "restore": "Restaurer",
     "delete": "Supprimer",
     "cancel": "Annuler",
@@ -632,6 +633,9 @@
     "githubTitle": "Voir sur GitHub"
   },
   "update": {
+    "check": "Rechercher une mise à jour",
+    "upToDate": "JewelBox est à jour (v{current}).",
+    "checkFailed": "Vérification impossible : {error}",
     "available": "v{version} disponible",
     "toastTitle": "JewelBox v{version} est disponible",
     "toastBody": "Vous utilisez la v{current}.",

@@ -132,6 +132,7 @@ export const api = {
   createBackup: () => request('POST', '/backups'),
   restoreBackup: (name) => request('POST', `/backups/${encodeURIComponent(name)}/restore`),
   deleteBackup: (name) => request('DELETE', `/backups/${encodeURIComponent(name)}`),
+  backupDownloadUrl: (name) => `${BASE}/backups/${encodeURIComponent(name)}/download`,
   // Listening statistics; period: 'month', 'year' or 'all'.
   getListeningStats: (period) => request('GET', `/player/stats?period=${period}`),
   getRadio: ({ album_id, artist_id }) =>

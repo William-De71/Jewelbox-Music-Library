@@ -1,8 +1,41 @@
 import { useState, useEffect } from 'preact/hooks';
 import { useI18n } from '../config/i18n/index.jsx';
 import { api } from '../api/client.js';
-import { Info, Heart } from 'lucide-preact';
+import { checkForUpdate } from '../components/UpdateNotice.jsx';
+import { Info, Heart, RefreshCw } from 'lucide-preact';
 import '../styles/version.css';
+
+// Looks for a new release now. When there is one, UpdateNotice opens its dialog.
+function UpdateCheck() {
+  const { t } = useI18n();
+  const [checking, setChecking] = useState(false);
+  const [message, setMessage] = useState(null);
+
+  const check = async () => {
+    setChecking(true);
+    setMessage(null);
+    try {
+      const status = await checkForUpdate();
+      if (status.error) setMessage(t('update.checkFailed', { error: status.error }));
+      else if (!status.available) setMessage(t('update.upToDate', { current: status.current }));
+    } catch (err) {
+      setMessage(t('update.checkFailed', { error: err.message }));
+    }
+    setChecking(false);
+  };
+
+  return (
+    <div class="text-center mb-4">
+      <button type="button" class="btn btn-outline-primary" disabled={checking} onClick={check}>
+        {checking
+          ? <span class="spinner-border spinner-border-sm me-2"></span>
+          : <RefreshCw size={16} class="me-2" />}
+        {t('update.check')}
+      </button>
+      {message && <p class="text-muted small mt-2 mb-0" role="status">{message}</p>}
+    </div>
+  );
+}
 
 export function About() {
   const { t } = useI18n();
@@ -62,6 +95,8 @@ export function About() {
                   <em>{t('about.subtitle')}</em>
                 </p>
               </div>
+
+              <UpdateCheck />
 
               {/* Crédits */}
               <div class="text-center">
