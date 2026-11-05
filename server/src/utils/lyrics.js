@@ -3,8 +3,9 @@ import path from 'path';
 import { APP_VERSION } from '../routes/version.js';
 
 // Lyrics of a track, synced when possible:
-//   1. a .lrc file next to the audio file (same name), the user's own;
-//   2. LRCLIB (https://lrclib.net), free, no key, by artist / title / album /
+//   1. the text entered by the user in a player;
+//   2. a .lrc file next to the audio file (same name), the user's own;
+//   3. LRCLIB (https://lrclib.net), free, no key, by artist / title / album /
 //      duration — when the "lyrics online" setting allows it. The exact match
 //      first, then a search (synced lyrics of a close duration preferred).
 // What LRCLIB answers (lyrics or nothing) is cached in the collection
@@ -159,4 +160,16 @@ export function lyricsPayload({ synced = null, plain = null, instrumental = fals
     lines: lines.length > 0 ? lines : null,
     plain: plain || (lines.length ? lrcToPlain(synced) : null),
   };
+}
+
+export const CUSTOM_LYRICS_MAX_CHARS = 100_000;
+
+// Lyrics entered by the user: synced when most lines carry a timestamp (a stray
+// "[1:30] solo" in plain text must not reduce it to that single line). The
+// original text comes along, for editing it.
+export function customLyricsPayload(text) {
+  const lines = text.split(/\r?\n/).filter(line => line.trim());
+  const timed = lines.filter(line => /^\s*\[\d{1,3}:\d{1,2}/.test(line)).length;
+  const synced = timed > 0 && timed * 2 >= lines.length;
+  return { ...lyricsPayload({ ...(synced ? { synced: text } : { plain: text }), source: 'custom' }), text };
 }

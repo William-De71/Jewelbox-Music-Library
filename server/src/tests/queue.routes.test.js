@@ -225,6 +225,21 @@ describe('PATCH /player/queue/state', () => {
     expect(await updatedAt()).not.toBe('2026-01-01 10:00:00');
   });
 
+  it('ignores a paused live report at another position, unlike a playing one', async () => {
+    await call('PUT', '/player/queue', { track_ids: [trackIds[0], trackIds[1]], current_index: 0, position_sec: 30 });
+    testDb.prepare("UPDATE player_queue_state SET updated_at = '2026-01-01 10:00:00'").run();
+    const queue = async () => (await call('GET', '/player/queue')).json();
+
+    // A player opening: its stream isn't loaded yet, so it reports position 0.
+    await call('PATCH', '/player/queue/state', { current_index: 0, position_sec: 0, playback_state: 'paused' });
+    expect(await queue()).toMatchObject({ position_sec: 30, updated_at: '2026-01-01 10:00:00' });
+
+    await call('PATCH', '/player/queue/state', { current_index: 0, position_sec: 31, playback_state: 'playing' });
+    const playing = await queue();
+    expect(playing.position_sec).toBe(31);
+    expect(playing.updated_at).not.toBe('2026-01-01 10:00:00');
+  });
+
   it('rejects malformed values', async () => {
     expect((await call('PATCH', '/player/queue/state', { current_index: 1.5 })).statusCode).toBe(400);
     expect((await call('PATCH', '/player/queue/state', { position_sec: 'x' })).statusCode).toBe(400);

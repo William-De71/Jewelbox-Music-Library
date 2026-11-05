@@ -5,7 +5,7 @@ import { parseRankingLimit } from '../db/smartPlaylists.js';
 import { getRadio, RADIO_DEFAULT_SIZE, RADIO_MAX_SIZE } from '../db/radio.js';
 import { getListeningStats, LISTENING_PERIODS, sqlUtc } from '../db/listening.js';
 import { getSetting, setSetting } from '../db/settings.js';
-import { MISS_RETRY_DAYS, PLAIN_RETRY_DAYS, fetchLrclib, lyricsPayload, readLocalLrc } from '../utils/lyrics.js';
+import { CUSTOM_LYRICS_MAX_CHARS, MISS_RETRY_DAYS, PLAIN_RETRY_DAYS, customLyricsPayload, fetchLrclib, lyricsPayload, readLocalLrc } from '../utils/lyrics.js';
 import { startScan, getScanStatus, matchManualFolder, isAudioFile } from '../utils/audioScanner.js';
 import {
   getAlbumById,
@@ -19,6 +19,9 @@ import {
   getTrackForLyrics,
   getCachedLyrics,
   cacheLyrics,
+  getCustomLyrics,
+  saveCustomLyrics,
+  deleteCustomLyrics,
   setTrackFavorite,
   recordPlay,
   getRecentPlayedItems,
@@ -149,11 +152,14 @@ export async function playerRoutes(fastify) {
     }
   });
 
-  // Lyrics of a track: a .lrc next to the file first, then LRCLIB (cached).
+  // Lyrics of a track: the user's text first, then a .lrc next to the file,
+  // then LRCLIB (cached).
   fastify.get('/player/tracks/:id/lyrics', async (req, reply) => {
     try {
       const track = getTrackForLyrics(Number(req.params.id));
       if (!track) return reply.code(404).send({ error: 'Track not found' });
+      const custom = getCustomLyrics(track.id);
+      if (custom) return customLyricsPayload(custom);
       const local = readLocalLrc(getMusicLibraryPath(), track.file_path);
       if (local) return lyricsPayload({ synced: local, source: 'file' });
 
@@ -181,6 +187,34 @@ export async function playerRoutes(fastify) {
       const kept = found ?? (cached?.found ? cached : null);
       cacheLyrics(track.id, kept);
       return kept ? lyricsPayload({ ...kept, source: 'lrclib' }) : lyricsPayload();
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Lyrics entered by the user (plain text, or LRC to follow the music).
+  fastify.put('/player/tracks/:id/lyrics', async (req, reply) => {
+    try {
+      const track = getTrackForLyrics(Number(req.params.id));
+      if (!track) return reply.code(404).send({ error: 'Track not found' });
+      const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+      if (!text || text.length > CUSTOM_LYRICS_MAX_CHARS) {
+        return reply.code(400).send({ error: `text must be a non-empty string of at most ${CUSTOM_LYRICS_MAX_CHARS} characters` });
+      }
+      saveCustomLyrics(track.id, text);
+      return customLyricsPayload(text);
+    } catch (err) {
+      return reply.code(500).send({ error: err.message });
+    }
+  });
+
+  // Back to the .lrc file or LRCLIB, whose cached answer was left untouched.
+  fastify.delete('/player/tracks/:id/lyrics', async (req, reply) => {
+    try {
+      const track = getTrackForLyrics(Number(req.params.id));
+      if (!track) return reply.code(404).send({ error: 'Track not found' });
+      deleteCustomLyrics(track.id);
+      return reply.code(204).send();
     } catch (err) {
       return reply.code(500).send({ error: err.message });
     }
@@ -307,8 +341,14 @@ export async function playerRoutes(fastify) {
       if (position_sec != null && !Number.isFinite(position_sec)) {
         return reply.code(400).send({ error: 'position_sec must be a number' });
       }
-      updateQueueState(device, { currentIndex: current_index, positionSec: position_sec });
       const live = parseLiveState(req.body);
+      // A paused or idle report is not listening: a player that merely opened
+      // must not overwrite the saved position nor look more recent than the
+      // device actually played on. Pausing pins the position with its own
+      // plain ping, sent by every client.
+      if (!live || live.playback_state === 'playing') {
+        updateQueueState(device, { currentIndex: current_index, positionSec: position_sec });
+      }
       if (live) {
         const label = device_label ? String(device_label).slice(0, 64) : getQueueDeviceLabel(device);
         remote.report(device, live, { label });

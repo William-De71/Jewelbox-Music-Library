@@ -103,6 +103,12 @@ export const SCHEMA = `
     fetched_at   TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS track_custom_lyrics (
+    track_id   INTEGER PRIMARY KEY REFERENCES tracks(id) ON DELETE CASCADE,
+    text       TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS loan_history (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     album_id    INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
