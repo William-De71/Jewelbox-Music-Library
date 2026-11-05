@@ -1,11 +1,14 @@
 import fs from 'fs';
 import path from 'path';
+import { pipeline, Readable } from 'stream';
 import { fileURLToPath } from 'url';
+import { createGzip } from 'zlib';
 import { getSetting, setSetting } from '../db/settings.js';
 import { getManagerDb } from '../db/manager.js';
 import { closeDb } from '../db/database.js';
 import {
   BACKUP_KEEP_MAX,
+  backupArchive,
   backupsToPrune,
   createBackup,
   deleteBackup,
@@ -122,6 +125,17 @@ export async function backupRoutes(fastify) {
     const { dir } = getBackupSettings();
     if (!deleteBackup(dir, req.params.name)) return reply.code(404).send({ error: 'Backup not found' });
     return reply.code(204).send();
+  });
+
+  fastify.get('/backups/:name/download', async (req, reply) => {
+    const { name } = req.params;
+    const archive = backupArchive(getBackupSettings().dir, name);
+    if (!archive) return reply.code(404).send({ error: 'Backup not found' });
+    reply
+      .header('Content-Type', 'application/gzip')
+      .header('Content-Disposition', `attachment; filename="${name}.tar.gz"`);
+    // A failure mid-way destroys the gzip stream, so the download fails visibly.
+    return reply.send(pipeline(Readable.from(archive), createGzip(), () => {}));
   });
 
   // Restores every collection of a backup, after a safety backup of the

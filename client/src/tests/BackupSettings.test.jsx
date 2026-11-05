@@ -11,6 +11,7 @@ vi.mock('../api/client.js', () => ({
     createBackup: vi.fn(() => Promise.resolve({})),
     restoreBackup: vi.fn(() => Promise.resolve({ restored: ['william'] })),
     deleteBackup: vi.fn(() => Promise.resolve(null)),
+    backupDownloadUrl: (name) => `/api/backups/${name}/download`,
   },
 }));
 
@@ -61,6 +62,17 @@ describe('BackupSettings', () => {
     expect(api.deleteBackup).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('backup.delete', { selector: 'button.btn-danger' }));
     await waitFor(() => expect(api.deleteBackup).toHaveBeenCalledWith('jewelbox-20261026-120000'));
+  });
+
+  it('offers each backup as a download', async () => {
+    render(<BackupSettings />);
+    await screen.findByText('william');
+    const links = screen.getAllByLabelText('backup.download');
+    expect(links.map(a => a.getAttribute('href'))).toEqual([
+      '/api/backups/jewelbox-20261027-030000/download',
+      '/api/backups/jewelbox-20261026-120000/download',
+    ]);
+    expect(links[0].hasAttribute('download')).toBe(true);
   });
 
   it('says when the server is too old', async () => {

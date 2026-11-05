@@ -6,6 +6,14 @@ import { useI18n } from '../config/i18n/index.jsx';
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 const SEEN_KEY = 'jewelbox-update-notified';
 const COMMAND = 'docker compose pull && docker compose up -d';
+const CHECKED_EVENT = 'jewelbox-update-checked';
+
+// Asks GitHub right now; the menu link and its dialog follow the answer.
+export async function checkForUpdate() {
+  const status = await api.getUpdate(true);
+  if (!status.error) window.dispatchEvent(new CustomEvent(CHECKED_EVENT, { detail: status }));
+  return status;
+}
 
 // Waits for the container to come back with another version, then reloads.
 async function waitForNewVersion(current, deadline) {
@@ -35,6 +43,20 @@ export function UpdateNotice() {
     const timer = setInterval(check, CHECK_EVERY_MS);
     return () => clearInterval(timer);
   }, [check]);
+
+  // Asked for by hand: answer with the dialog directly, not with a toast too.
+  useEffect(() => {
+    const onChecked = ({ detail }) => {
+      if (detail.available) {
+        try { localStorage.setItem(SEEN_KEY, detail.latest.version); } catch { /* storage unavailable */ }
+        setToast(false);
+        setOpen(true);
+      }
+      setStatus(detail);
+    };
+    window.addEventListener(CHECKED_EVENT, onChecked);
+    return () => window.removeEventListener(CHECKED_EVENT, onChecked);
+  }, []);
 
   // Tell once per version, even across reloads.
   useEffect(() => {

@@ -7,7 +7,7 @@ vi.mock('../api/client.js', () => ({
 
 import { api } from '../api/client.js';
 import { I18nProvider } from '../config/i18n/index.jsx';
-import { UpdateNotice } from '../components/UpdateNotice.jsx';
+import { UpdateNotice, checkForUpdate } from '../components/UpdateNotice.jsx';
 
 const status = (extra = {}) => ({
   current: '1.18.1',
@@ -51,6 +51,26 @@ describe('UpdateNotice', () => {
     show();
     await screen.findByText('v1.19.0 disponible');
     expect(screen.queryByText('JewelBox v1.19.0 est disponible')).toBeNull();
+  });
+
+  it('a check by hand opens the dialog, without a toast', async () => {
+    api.getUpdate.mockResolvedValue(status({ available: false }));
+    show();
+    await waitFor(() => expect(api.getUpdate).toHaveBeenCalledWith());
+    api.getUpdate.mockResolvedValue(status());
+    await checkForUpdate();
+    expect(api.getUpdate).toHaveBeenLastCalledWith(true);
+    expect(await screen.findByText('- du neuf')).toBeTruthy();
+    expect(screen.queryByText('JewelBox v1.19.0 est disponible')).toBeNull();
+  });
+
+  it('a failed check by hand leaves the known status alone', async () => {
+    api.getUpdate.mockResolvedValue(status());
+    show();
+    await screen.findByText('v1.19.0 disponible');
+    api.getUpdate.mockResolvedValue({ current: '1.18.1', available: false, latest: null, error: 'HTTP 403' });
+    expect((await checkForUpdate()).error).toBe('HTTP 403');
+    expect(screen.getByText('v1.19.0 disponible')).toBeTruthy();
   });
 
   it('asks Watchtower and reloads once the new version answers', async () => {

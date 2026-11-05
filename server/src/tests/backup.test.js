@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import Database from 'better-sqlite3';
 import {
+  backupArchive,
   backupName,
   backupsToPrune,
   createBackup,
@@ -142,6 +144,40 @@ describe('backup and restore', () => {
     expect(titles(newJazz)).toEqual(['Kind of Blue']);
     expect(fs.existsSync(path.join(path.dirname(one.path), 'covers', COVER))).toBe(true);
     expect(fs.existsSync(path.join(path.dirname(newJazz), 'covers', COVER))).toBe(true);
+  });
+
+  it('downloads as a tar that real tar reads and that restores once extracted', async () => {
+    const one = makeCollection('william', ['Blind']);
+    const backup = await createBackup({ root, databases: [one] });
+    // Larger than a tar block, and not a multiple of it.
+    fs.appendFileSync(path.join(root, 'covers', COVER), Buffer.alloc(1300, 7));
+    const coverBefore = fs.readFileSync(path.join(root, 'covers', COVER));
+
+    const chunks = [];
+    for await (const chunk of backupArchive(root, backup.name)) chunks.push(chunk);
+    const file = path.join(tmp, 'backup.tar');
+    fs.writeFileSync(file, Buffer.concat(chunks));
+    expect(fs.statSync(file).size % 512).toBe(0);
+
+    const elsewhere = path.join(tmp, 'elsewhere');
+    fs.mkdirSync(elsewhere);
+    const listing = execFileSync('tar', ['tf', file, '-C', elsewhere], { encoding: 'utf8' });
+    expect(listing.trim().split('\n').sort()).toEqual([
+      `covers/${COVER}`, `${backup.name}/1.db`, `${backup.name}/manifest.json`,
+    ].sort());
+    execFileSync('tar', ['xf', file, '-C', elsewhere]);
+    expect(fs.readFileSync(path.join(elsewhere, 'covers', COVER)).equals(coverBefore)).toBe(true);
+
+    expect(listBackups(elsewhere).map(b => b.name)).toEqual([backup.name]);
+    const target = path.join(tmp, 'restored', 'r.db');
+    restoreBackup(elsewhere, backup.name, { target: () => ({ path: target }) });
+    expect(titles(target)).toEqual(['Blind']);
+    expect(fs.existsSync(path.join(tmp, 'restored', 'covers', COVER))).toBe(true);
+  });
+
+  it('has no archive for an unknown or malformed name', () => {
+    expect(backupArchive(root, 'jewelbox-20261027-030000')).toBeNull();
+    expect(backupArchive(root, '../secret')).toBeNull();
   });
 
   it('refuses unknown names and deletes a backup', async () => {

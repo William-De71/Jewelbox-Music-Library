@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { Archive, RotateCcw, Trash2, Save } from 'lucide-preact';
+import { Archive, Download, RotateCcw, Trash2, Save } from 'lucide-preact';
 import { api } from '../api/client.js';
 import { useI18n } from '../config/i18n/index.jsx';
 
@@ -141,6 +141,10 @@ export function BackupSettings({ notify }) {
                   <td class="small">{b.databases.map(d => d.name).join(', ')}</td>
                   <td class="text-end text-nowrap small">{formatBytes(b.size)}</td>
                   <td class="text-end text-nowrap">
+                    <a href={api.backupDownloadUrl(b.name)} download class="btn btn-sm btn-ghost-primary"
+                      title={t('backup.download')} aria-label={t('backup.download')}>
+                      <Download size={16} />
+                    </a>
                     <button type="button" class="btn btn-sm btn-ghost-primary" disabled={busy}
                       onClick={() => setConfirm({ kind: 'restore', name: b.name, created_at: b.created_at })}
                       title={t('backup.restore')} aria-label={t('backup.restore')}>
