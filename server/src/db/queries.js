@@ -759,9 +759,9 @@ export function saveQueue(deviceId, trackIds, { currentIndex, positionSec, label
   return getQueue(deviceId);
 }
 
-// A player sitting idle (opened, paused) still reports its live state, with
-// the saved index and position: that must not look like fresh listening, or
-// the other devices would offer to resume it again ("most recent queue").
+// A ping repeating the saved index and position must not look like fresh
+// listening, or the other devices would offer to resume it again ("most recent
+// queue"). Paused live reports don't even get here (see routes/player.js).
 const SAME_POSITION_SEC = 1;
 
 export function updateQueueState(deviceId, { currentIndex, positionSec } = {}) {

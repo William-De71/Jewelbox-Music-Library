@@ -307,8 +307,14 @@ export async function playerRoutes(fastify) {
       if (position_sec != null && !Number.isFinite(position_sec)) {
         return reply.code(400).send({ error: 'position_sec must be a number' });
       }
-      updateQueueState(device, { currentIndex: current_index, positionSec: position_sec });
       const live = parseLiveState(req.body);
+      // A paused or idle report is not listening: a player that merely opened
+      // must not overwrite the saved position nor look more recent than the
+      // device actually played on. Pausing pins the position with its own
+      // plain ping, sent by every client.
+      if (!live || live.playback_state === 'playing') {
+        updateQueueState(device, { currentIndex: current_index, positionSec: position_sec });
+      }
       if (live) {
         const label = device_label ? String(device_label).slice(0, 64) : getQueueDeviceLabel(device);
         remote.report(device, live, { label });
