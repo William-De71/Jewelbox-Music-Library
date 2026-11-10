@@ -104,7 +104,7 @@ L'analyse de la bibliothèque lit aussi les tags ReplayGain des fichiers (écrit
 
 Aucune configuration : rendez-vous dans **Paramètres → Last.fm**, cliquez sur « Connecter mon compte Last.fm » et autorisez l'application sur last.fm — c'est tout.
 
-Les écoutes sont scrobblées selon la règle Last.fm : piste d'au moins 30 secondes, écoutée à moitié ou pendant 4 minutes. Le « now playing » s'affiche dès le début de la lecture. Votre clé de session ne quitte jamais le serveur.
+Les écoutes sont scrobblées selon la règle Last.fm : piste d'au moins 30 secondes, écoutée à moitié ou pendant 4 minutes. Le « now playing » s'affiche dès le début de la lecture. Votre clé de session ne quitte jamais le serveur. Si Last.fm est injoignable (serveur sans Internet, service en panne), les écoutes sont gardées par le serveur et renvoyées dès qu'il répond de nouveau, avec leur vraie date (jusqu'à 13 jours, 500 écoutes au plus).
 
 <details>
 <summary>Utiliser votre propre clé API Last.fm</summary>

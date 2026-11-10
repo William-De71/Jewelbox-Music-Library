@@ -3,6 +3,8 @@ import {
   getLoanHistory, addLoanHistory, closeLoan, getArtistLetters,
 } from '../db/queries.js';
 import { downloadCover } from '../utils/downloadCover.js';
+import { coverSource } from '../utils/coverSource.js';
+import { parseCsv } from '../utils/csv.js';
 import { getDb } from '../db/database.js';
 
 export async function albumRoutes(fastify) {
@@ -109,12 +111,8 @@ export async function albumRoutes(fastify) {
     const albumData = { ...req.body };
     
     // If cover_url is from external sources, download it locally
-    if (albumData.cover_url && (
-      albumData.cover_url.includes('coverartarchive.org') || 
-      albumData.cover_url.includes('discogs.com') ||
-      albumData.cover_url.includes('i.discogs.com')
-    )) {
-      const source = albumData.cover_url.includes('discogs.com') ? 'Discogs' : 'MusicBrainz';
+    const source = coverSource(albumData.cover_url);
+    if (source) {
       console.log(`[CreateAlbum] Downloading cover from ${source}: ${albumData.cover_url}`);
       const localCoverUrl = await downloadCover(albumData.cover_url);
       if (localCoverUrl) {
@@ -164,12 +162,8 @@ export async function albumRoutes(fastify) {
       }
 
       // If cover_url is from external sources, download it locally
-      if (data.cover_url && (
-        data.cover_url.includes('coverartarchive.org') ||
-        data.cover_url.includes('discogs.com') ||
-        data.cover_url.includes('i.discogs.com')
-      )) {
-        const source = data.cover_url.includes('discogs.com') ? 'Discogs' : 'MusicBrainz';
+      const source = coverSource(data.cover_url);
+      if (source) {
         console.log(`[UpdateAlbum] Downloading cover from ${source}: ${data.cover_url}`);
         const localCoverUrl = await downloadCover(data.cover_url);
         if (localCoverUrl) {
@@ -272,17 +266,17 @@ export async function albumRoutes(fastify) {
       const data = await req.file();
       if (!data) return reply.code(400).send({ error: 'No file provided' });
       const buf = await data.toBuffer();
-      const text = buf.toString('utf-8');
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      // Quoted cells may hold commas, line breaks and "" (see the export above).
+      const lines = parseCsv(buf.toString('utf-8')).filter(cells => cells.some(c => c.trim()));
       if (lines.length < 2) return reply.code(400).send({ error: 'Empty CSV' });
 
-      const header = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+      const header = lines[0].map(h => h.trim());
       const idx = k => header.indexOf(k);
       let imported = 0, skipped = 0;
 
       for (let i = 1; i < lines.length; i++) {
-        const cols = lines[i].match(/(".*?"|[^,]+|(?<=,)(?=,)|(?<=,)$|^(?=,))/g) || [];
-        const get = (k) => (cols[idx(k)]||'').replace(/^"|"$/g,'').trim();
+        const cols = lines[i];
+        const get = (k) => (cols[idx(k)]||'').trim();
         const title = get('title');
         const artist_name = get('artist');
         if (!title || !artist_name) { skipped++; continue; }

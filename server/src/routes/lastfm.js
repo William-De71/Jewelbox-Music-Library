@@ -2,6 +2,49 @@ import { getSetting, setSetting, deleteSetting } from '../db/settings.js';
 import { authUrl, getSession, updateNowPlaying, scrobble } from '../utils/lastfm.js';
 import { getAppCredentials } from '../utils/lastfmCredentials.js';
 import { getTrackWithAlbum, durationToSeconds } from '../db/queries.js';
+import { addPending, isTransientFailure, parsePending, prunePending, removePending } from '../utils/scrobbleQueue.js';
+
+// Scrobbles waiting for Last.fm to answer again (utils/scrobbleQueue.js),
+// kept with the settings: like the session, they belong to the server, not
+// to a collection.
+export const PENDING_SCROBBLES_KEY = 'lastfm_pending_scrobbles';
+const FLUSH_MS = 5 * 60 * 1000;
+
+const nowSec = () => Math.floor(Date.now() / 1000);
+
+function loadPending() {
+  return prunePending(parsePending(getSetting(PENDING_SCROBBLES_KEY)), nowSec());
+}
+
+function storePending(list) {
+  if (list.length) setSetting(PENDING_SCROBBLES_KEY, JSON.stringify(list));
+  else deleteSetting(PENDING_SCROBBLES_KEY);
+}
+
+let flushing = false;
+
+// Sends the waiting scrobbles, oldest first, and stops at the first one
+// Last.fm cannot take yet. The list is read again around every call: a play
+// reported meanwhile must not be lost.
+export async function flushPendingScrobbles() {
+  if (flushing) return;
+  const creds = getCreds();
+  if (!creds.apiKey || !creds.secret || !creds.sessionKey) return;
+  flushing = true;
+  try {
+    for (const entry of loadPending()) {
+      try {
+        await scrobble(creds, entry);
+      } catch (err) {
+        if (isTransientFailure(err)) return;
+        console.error('[Last.fm]', err.message); // refused for good: not sent again
+      }
+      storePending(removePending(loadPending(), entry));
+    }
+  } finally {
+    flushing = false;
+  }
+}
 
 // A Last.fm session key is bound to the API key that authorised it. When the
 // app key changes (upgrade from the user-supplied key, env override, revoked
@@ -72,7 +115,14 @@ export async function lastfmRoutes(fastify) {
     }
   });
 
+  // Waiting scrobbles are tried again now and then, not only at the next play.
+  const timer = setInterval(() => { flushPendingScrobbles().catch(() => {}); }, FLUSH_MS);
+  timer.unref?.();
+  fastify.addHook('onClose', async () => clearInterval(timer));
+
   fastify.delete('/lastfm/session', async (req, reply) => {
+    // Plays waiting for this account must not land on the next one.
+    deleteSetting(PENDING_SCROBBLES_KEY);
     deleteSetting('lastfm_session_key');
     deleteSetting('lastfm_username');
     deleteSetting('lastfm_session_api_key');
@@ -88,6 +138,21 @@ export async function lastfmRoutes(fastify) {
     if (!Number.isFinite(startedAt) || startedAt <= 0) {
       return reply.code(400).send({ error: 'started_at (epoch seconds) is required' });
     }
-    return fireAndForget(req, reply, (creds, meta) => scrobble(creds, { ...meta, timestamp: Math.floor(startedAt) }));
+    // Kept for later when Last.fm cannot take it now; behind the scrobbles
+    // already waiting, so the order holds.
+    return fireAndForget(req, reply, async (creds, meta) => {
+      const entry = { ...meta, timestamp: Math.floor(startedAt) };
+      if (loadPending().length) {
+        storePending(addPending(loadPending(), entry, nowSec()));
+        flushPendingScrobbles().catch(() => {});
+        return;
+      }
+      try {
+        await scrobble(creds, entry);
+      } catch (err) {
+        if (isTransientFailure(err)) storePending(addPending(loadPending(), entry, nowSec()));
+        throw err;
+      }
+    });
   });
 }

@@ -12,7 +12,7 @@ import { versionRoutes, APP_VERSION } from './routes/version.js';
 import { updateRoutes } from './routes/update.js';
 import { playerRoutes } from './routes/player.js';
 import { playlistRoutes } from './routes/playlists.js';
-import { lastfmRoutes, dropStaleSession } from './routes/lastfm.js';
+import { lastfmRoutes, dropStaleSession, PENDING_SCROBBLES_KEY } from './routes/lastfm.js';
 import { isLastfmAvailable } from './utils/lastfmCredentials.js';
 import { getBrowseRoots, resolveInRoots, listDirectory, parentWithinRoots } from './utils/fsBrowser.js';
 import { smartPlaylistRoutes } from './routes/smartPlaylists.js';
@@ -20,7 +20,7 @@ import { remoteRoutes } from './routes/remote.js';
 import { backupRoutes, startBackupScheduler } from './routes/backups.js';
 import { createDatabase, setActiveDatabase, deleteDatabase } from './db/manager.js';
 import { advertise, stopAdvertising, serviceName } from './utils/mdns.js';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -54,6 +54,19 @@ function getManagerDb() {
     `);
   }
   return managerDb;
+}
+
+// A collection lives in DATA_DIR/<name>/ : its name must be a plain folder
+// name, and not the folder of the backups.
+const RESERVED_DATABASE_NAMES = ['backups'];
+function isValidDatabaseName(name) {
+  return !/[/\\\0]/.test(name) && name !== '.' && name !== '..' && !RESERVED_DATABASE_NAMES.includes(name);
+}
+
+// Whether `folder` is a folder of its own under DATA_DIR (never DATA_DIR itself).
+function isOwnDataFolder(folder) {
+  const relative = path.relative(DATA_DIR, path.resolve(folder));
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
 const fastify = Fastify({
@@ -143,6 +156,45 @@ fastify.get('/covers/:filename', async (req, reply) => {
   }
 });
 
+// Upload a cover picked on the user's machine (album form). Stored with the
+// covers of the active database, under the md5 of the image, and served by
+// the route above.
+const COVER_UPLOAD_TYPES = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/gif': '.gif',
+};
+
+fastify.post('/api/upload/cover', async (req, reply) => {
+  try {
+    const data = await req.file();
+    if (!data) return reply.code(400).send({ error: 'No file provided' });
+
+    const ext = COVER_UPLOAD_TYPES[data.mimetype];
+    if (!ext) return reply.code(400).send({ error: 'Unsupported image type (JPEG, PNG, WebP or GIF)' });
+
+    const buffer = await data.toBuffer();
+    if (buffer.length === 0) return reply.code(400).send({ error: 'Empty file' });
+
+    const activeDb = getManagerDb().prepare('SELECT * FROM databases WHERE is_active = 1 LIMIT 1').get();
+    if (!activeDb) return reply.code(404).send({ error: 'No active database' });
+
+    const coversFolder = path.join(path.dirname(activeDb.path), 'covers');
+    fs.mkdirSync(coversFolder, { recursive: true });
+    const filename = `${createHash('md5').update(buffer).digest('hex')}${ext}`;
+    fs.writeFileSync(path.join(coversFolder, filename), buffer);
+
+    return { url: `/covers/${filename}` };
+  } catch (err) {
+    if (err.code === 'FST_REQ_FILE_TOO_LARGE') {
+      return reply.code(413).send({ error: 'File too large (10 MB max)' });
+    }
+    console.error('[Covers] Upload failed:', err);
+    return reply.code(500).send({ error: 'Failed to upload cover' });
+  }
+});
+
 // Real database routes
 fastify.get('/api/databases', async (req, reply) => {
   try {
@@ -163,6 +215,9 @@ fastify.post('/api/databases', async (req, reply) => {
     
     if (!name || name.trim() === '') {
       return reply.code(400).send({ error: 'Database name is required' });
+    }
+    if (!isValidDatabaseName(name.trim())) {
+      return reply.code(400).send({ error: 'Invalid database name' });
     }
 
     const db = getManagerDb();
@@ -269,16 +324,18 @@ fastify.post('/api/databases/:id/activate', {
     const { id } = req.params;
     console.log('[ACTIVATE] Received ID:', id, 'Type:', typeof id);
     const db = getManagerDb();
-    
-    // Clear all active flags
-    db.exec('UPDATE databases SET is_active = 0');
-    
-    // Set new active
-    const result = db.prepare('UPDATE databases SET is_active = 1 WHERE id = ?').run(parseInt(id));
-    
-    if (result.changes === 0) {
+    const dbId = parseInt(id);
+
+    // Checked first: an unknown id must not leave the server without any
+    // active database.
+    if (!db.prepare('SELECT 1 FROM databases WHERE id = ?').get(dbId)) {
       return reply.code(404).send({ error: 'Database not found' });
     }
+
+    db.transaction(() => {
+      db.exec('UPDATE databases SET is_active = 0');
+      db.prepare('UPDATE databases SET is_active = 1 WHERE id = ?').run(dbId);
+    })();
     
     return { message: 'Database activated successfully' };
   } catch (err) {
@@ -333,11 +390,16 @@ fastify.delete('/api/databases/:id', async (req, reply) => {
       return reply.code(404).send({ error: 'Database not found' });
     }
 
-    // Delete the entire database folder
+    // Delete the entire database folder — only when it is a folder of its
+    // own under the data directory. A database file sitting directly in the
+    // data directory (or elsewhere) is removed alone: its folder holds more
+    // than this collection.
     const dbFolder = path.dirname(dbRecord.path);
-    if (fs.existsSync(dbFolder)) {
+    if (isOwnDataFolder(dbFolder)) {
       // Remove folder and all contents recursively
       fs.rmSync(dbFolder, { recursive: true, force: true });
+    } else {
+      for (const suffix of ['', '-wal', '-shm']) fs.rmSync(dbRecord.path + suffix, { force: true });
     }
 
     // Delete from manager
@@ -354,7 +416,7 @@ fastify.delete('/api/databases/:id', async (req, reply) => {
 // Secrets never leave the server; the client only sees "configured" booleans.
 // The Last.fm app key/secret ship with the build (see utils/lastfmCredentials.js)
 // and are no longer stored in settings; legacy rows are hidden and ignored.
-const HIDDEN_SETTINGS = ['lastfm_api_key', 'lastfm_api_secret', 'lastfm_session_key', 'lastfm_session_api_key'];
+const HIDDEN_SETTINGS = ['lastfm_api_key', 'lastfm_api_secret', 'lastfm_session_key', 'lastfm_session_api_key', PENDING_SCROBBLES_KEY];
 
 fastify.get('/api/settings', async (req, reply) => {
   try {
@@ -387,6 +449,8 @@ fastify.put('/api/settings', async (req, reply) => {
       'lastfm_connected', 'lastfm_available',
       // App credentials ship with the build; the session key is set by the auth flow.
       'lastfm_api_key', 'lastfm_api_secret', 'lastfm_session_key', 'lastfm_session_api_key',
+      // Scrobbles waiting for Last.fm: managed by the scrobble routes only.
+      PENDING_SCROBBLES_KEY,
     ]);
     entries.forEach(([key, value]) => {
       if (READONLY_SETTINGS.has(key)) return;

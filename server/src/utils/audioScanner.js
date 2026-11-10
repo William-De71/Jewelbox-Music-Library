@@ -13,6 +13,7 @@ import {
   setTrackFilePaths,
   clearAllFilePaths,
 } from '../db/queries.js';
+import { getDb } from '../db/database.js';
 
 const AUDIO_EXTS = new Set(['.mp3', '.flac', '.ogg', '.oga', '.opus', '.m4a', '.aac', '.wav']);
 const UNMATCHED_LIMIT = 500;
@@ -133,6 +134,8 @@ async function runScan(libraryPath) {
   const allFiles = await walkAudioFiles(libraryPath);
   state.progress.files_total = allFiles.length;
 
+  // The collection being scanned: the results must not land in another one.
+  const scannedDb = getDb();
   const albums = getAlbumsForMatching();
   const autoAlbums = albums.filter(a => !a.audio_folder);
   const manualAlbums = albums.filter(a => a.audio_folder);
@@ -175,6 +178,12 @@ async function runScan(libraryPath) {
     } catch {
       result.errors.push(`Dossier associé introuvable : ${album.audio_folder} (album #${album.id})`);
     }
+  }
+
+  // Reading the tags takes a while: if the active collection changed (or was
+  // restored) meanwhile, these track ids belong to the previous one.
+  if (getDb() !== scannedDb) {
+    throw new Error("La collection active a changé pendant l'analyse : relancez-la.");
   }
 
   clearAllFilePaths({ keepManual: true });
