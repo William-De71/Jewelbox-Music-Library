@@ -22,8 +22,12 @@ vi.mock('../utils/lastfmCredentials.js', () => ({
 }));
 
 import Fastify from 'fastify';
-import { apiSignature, authUrl, getSession, scrobble } from '../utils/lastfm.js';
-import { lastfmRoutes } from '../routes/lastfm.js';
+import { apiSignature, authUrl, getSession, scrobble, LastfmError } from '../utils/lastfm.js';
+import { lastfmRoutes, flushPendingScrobbles, PENDING_SCROBBLES_KEY } from '../routes/lastfm.js';
+import {
+  PENDING_SCROBBLES_MAX, SCROBBLE_MAX_AGE_SEC,
+  addPending, isTransientFailure, parsePending, prunePending, removePending,
+} from '../utils/scrobbleQueue.js';
 import { getDb } from '../db/database.js';
 import { getSetting, setSetting, deleteSetting } from '../db/settings.js';
 
@@ -279,5 +283,136 @@ describe('lastfm routes', () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
     const res = await app.inject({ method: 'POST', url: '/lastfm/scrobble', payload: { track_id: trackId, started_at: 1700000000 } });
     expect(res.statusCode).toBe(204);
+  });
+
+  // ── Scrobbles kept while Last.fm is away ────────────────────────────────────
+
+  const connect = () => {
+    appCreds.apiKey = 'KEY';
+    appCreds.secret = 'SECRET';
+    settingsStore.lastfm_session_key = 'SK';
+    settingsStore.lastfm_session_api_key = 'KEY';
+  };
+  const recent = () => Math.floor(Date.now() / 1000) - 600;
+  const pending = () => JSON.parse(settingsStore[PENDING_SCROBBLES_KEY] ?? '[]');
+  const post = (startedAt) =>
+    app.inject({ method: 'POST', url: '/lastfm/scrobble', payload: { track_id: trackId, started_at: startedAt } });
+  const sentTimestamps = (fetchMock) =>
+    fetchMock.mock.calls.map(([, init]) => new URLSearchParams(init.body).get('timestamp'));
+
+  it('keeps a scrobble when the network is down', async () => {
+    connect();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+    const at = recent();
+    expect((await post(at)).statusCode).toBe(204);
+    expect(pending()).toEqual([{ artist: 'Radiohead', track: 'Airbag', album: 'OK Computer', duration: 284, timestamp: at }]);
+  });
+
+  it('keeps a scrobble when Last.fm asks to come back later, not when it refuses it', async () => {
+    connect();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ json: async () => ({ error: 16, message: 'Try again' }) })));
+    await post(recent());
+    expect(pending()).toHaveLength(1);
+
+    delete settingsStore[PENDING_SCROBBLES_KEY];
+    vi.stubGlobal('fetch', vi.fn(async () => ({ json: async () => ({ error: 6, message: 'Invalid parameters' }) })));
+    await post(recent());
+    expect(pending()).toHaveLength(0);
+  });
+
+  it('does not keep a scrobble too old for Last.fm', async () => {
+    connect();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+    await post(1700000000);
+    expect(pending()).toHaveLength(0);
+  });
+
+  it('sends the waiting scrobbles first, oldest first, once Last.fm answers', async () => {
+    connect();
+    const first = recent();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+    await post(first);
+    await post(first + 300);
+    expect(pending().map(e => e.timestamp)).toEqual([first, first + 300]);
+
+    const fetchMock = vi.fn(async () => ({ json: async () => ({}) }));
+    vi.stubGlobal('fetch', fetchMock);
+    await post(first + 600);
+    await flushPendingScrobbles();
+    await vi.waitFor(() => expect(pending()).toHaveLength(0));
+    expect(sentTimestamps(fetchMock)).toEqual([first, first + 300, first + 600].map(String));
+    expect(settingsStore).not.toHaveProperty(PENDING_SCROBBLES_KEY);
+  });
+
+  it('stops at the first scrobble Last.fm cannot take yet and drops a refused one', async () => {
+    connect();
+    const first = recent();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+    await post(first);
+    await post(first + 300);
+    await post(first + 600);
+
+    // The first is refused for good, the second must wait: the third is not tried.
+    const answers = [{ error: 6, message: 'Invalid parameters' }, { error: 29, message: 'Rate limit' }];
+    const fetchMock = vi.fn(async () => ({ json: async () => answers.shift() ?? {} }));
+    vi.stubGlobal('fetch', fetchMock);
+    await flushPendingScrobbles();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(pending().map(e => e.timestamp)).toEqual([first + 300, first + 600]);
+  });
+
+  it('flushes nothing without a session, and disconnecting forgets the waiting scrobbles', async () => {
+    connect();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+    await post(recent());
+    expect(pending()).toHaveLength(1);
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    delete settingsStore.lastfm_session_key;
+    await flushPendingScrobbles();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await app.inject({ method: 'DELETE', url: '/lastfm/session' });
+    expect(settingsStore).not.toHaveProperty(PENDING_SCROBBLES_KEY);
+  });
+});
+
+// ── scrobbleQueue ─────────────────────────────────────────────────────────────
+
+describe('scrobbleQueue', () => {
+  const entry = (timestamp, track = 'Airbag') => ({ artist: 'Radiohead', track, timestamp });
+
+  it('tells a transient failure from a final refusal', () => {
+    expect(isTransientFailure(new Error('network down'))).toBe(true);
+    expect(isTransientFailure(new LastfmError(11, 'offline'))).toBe(true);
+    expect(isTransientFailure(new LastfmError(16, 'later'))).toBe(true);
+    expect(isTransientFailure(new LastfmError(29, 'rate limit'))).toBe(true);
+    expect(isTransientFailure(new LastfmError(9, 'invalid session'))).toBe(false);
+  });
+
+  it('reads the stored list and leaves out what it cannot read', () => {
+    expect(parsePending(null)).toEqual([]);
+    expect(parsePending('not json')).toEqual([]);
+    expect(parsePending('{"a":1}')).toEqual([]);
+    expect(parsePending(JSON.stringify([entry(10), null, { artist: 'x' }, 'y']))).toEqual([entry(10)]);
+  });
+
+  it('drops the scrobbles too old and the oldest beyond the limit', () => {
+    const now = 2_000_000;
+    expect(prunePending([entry(now - SCROBBLE_MAX_AGE_SEC - 1), entry(now - 10)], now)).toEqual([entry(now - 10)]);
+    const many = Array.from({ length: PENDING_SCROBBLES_MAX + 5 }, (_, i) => entry(now - 1000 + i));
+    const kept = prunePending(many, now);
+    expect(kept).toHaveLength(PENDING_SCROBBLES_MAX);
+    expect(kept[0]).toEqual(many[5]);
+  });
+
+  it('keeps the same play once and removes one entry', () => {
+    const now = 2_000_000;
+    const list = addPending([entry(now - 20)], entry(now - 20), now);
+    expect(list).toEqual([entry(now - 20)]);
+    const two = addPending(list, entry(now - 10, 'Paranoid Android'), now);
+    expect(two).toHaveLength(2);
+    expect(removePending(two, entry(now - 20))).toEqual([entry(now - 10, 'Paranoid Android')]);
   });
 });

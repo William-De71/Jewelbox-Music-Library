@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import Database from 'better-sqlite3';
+import { coverSource } from './coverSource.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,7 +57,7 @@ export async function downloadCover(imageUrl) {
     };
     
     // Add Discogs authentication if this is a Discogs URL
-    if (imageUrl.includes('discogs.com')) {
+    if (coverSource(imageUrl) === 'Discogs') {
       let dKey = '', dSecret = '';
       try {
         const mDb = new Database(MANAGER_DB_PATH);

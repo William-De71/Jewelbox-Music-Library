@@ -28,7 +28,8 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//, /^\/covers\//],
         runtimeCaching: [
           {
-            urlPattern: /^\/api\/albums/,
+            // Workbox tests a RegExp against the whole URL (http://host/api/…): no ^ here.
+            urlPattern: /\/api\/albums/,
             handler: 'NetworkFirst',
             options: { cacheName: 'api-albums', expiration: { maxEntries: 200 } },
           },
