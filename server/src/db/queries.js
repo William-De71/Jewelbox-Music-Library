@@ -135,11 +135,12 @@ export function getAlbumById(id) {
   const album = mapAlbum(db.prepare(`${ALBUM_SELECT} WHERE a.id = ?`).get(id));
   if (!album) return null;
   album.tracks = db
-    .prepare(`SELECT id, position, title, duration, file_path, play_count, is_favorite, ${REPLAYGAIN_FIELDS}
-              FROM tracks t WHERE album_id = ? ORDER BY position`)
+    .prepare(`SELECT id, disc, position, title, duration, file_path, play_count, is_favorite, ${REPLAYGAIN_FIELDS}
+              FROM tracks t WHERE album_id = ? ORDER BY disc, position`)
     .all(id)
     .map(t => ({
       id: t.id,
+      disc: t.disc,
       position: t.position,
       title: t.title,
       duration: t.duration,
@@ -176,7 +177,7 @@ export function createAlbum(data) {
   `);
 
   const insertTrack = db.prepare(
-    'INSERT INTO tracks (album_id, position, title, duration) VALUES (?, ?, ?, ?)'
+    'INSERT INTO tracks (album_id, disc, position, title, duration) VALUES (?, ?, ?, ?, ?)'
   );
 
   const run = db.transaction(() => {
@@ -193,7 +194,7 @@ export function createAlbum(data) {
       notes: data.notes ?? null,
       is_wanted: data.is_wanted ? 1 : 0,
     });
-    (data.tracks || []).forEach((t, i) => insertTrack.run(lastInsertRowid, t.position ?? i + 1, t.title, t.duration || null));
+    (data.tracks || []).forEach((t, i) => insertTrack.run(lastInsertRowid, t.disc ?? 1, t.position ?? i + 1, t.title, t.duration || null));
     return lastInsertRowid;
   });
 
@@ -235,9 +236,9 @@ export function updateAlbum(id, data) {
   params.push(id);
 
   const insertTrack = db.prepare(
-    'INSERT INTO tracks (album_id, position, title, duration, file_path) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO tracks (album_id, disc, position, title, duration, file_path) VALUES (?, ?, ?, ?, ?, ?)'
   );
-  const updateTrack = db.prepare('UPDATE tracks SET position = ?, title = ?, duration = ? WHERE id = ?');
+  const updateTrack = db.prepare('UPDATE tracks SET disc = ?, position = ?, title = ?, duration = ? WHERE id = ?');
   const deleteTrack = db.prepare('DELETE FROM tracks WHERE id = ?');
   const hasPlaylistTracks = db
     .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='playlist_tracks'")
@@ -251,19 +252,20 @@ export function updateAlbum(id, data) {
     if (data.tracks) {
       // Diff instead of delete+reinsert: track ids must survive album edits so
       // playlist entries and audio file associations stay valid.
-      const oldTracks = db.prepare('SELECT id, position, title FROM tracks WHERE album_id = ?').all(id);
+      const oldTracks = db.prepare('SELECT id, disc, position, title FROM tracks WHERE album_id = ?').all(id);
       const consumed = new Set();
-      const claim = (position, title) => {
-        let match = oldTracks.find(o => !consumed.has(o.id) && o.position === position);
+      const claim = (disc, position, title) => {
+        let match = oldTracks.find(o => !consumed.has(o.id) && o.disc === disc && o.position === position);
         if (!match) match = oldTracks.find(o => !consumed.has(o.id) && o.title === title);
         if (match) consumed.add(match.id);
         return match ?? null;
       };
       data.tracks.forEach((t, i) => {
+        const disc = t.disc ?? 1;
         const position = t.position ?? i + 1;
-        const match = claim(position, t.title);
-        if (match) updateTrack.run(position, t.title, t.duration || null, match.id);
-        else insertTrack.run(id, position, t.title, t.duration || null, null);
+        const match = claim(disc, position, t.title);
+        if (match) updateTrack.run(disc, position, t.title, t.duration || null, match.id);
+        else insertTrack.run(id, disc, position, t.title, t.duration || null, null);
       });
       for (const old of oldTracks) {
         if (!consumed.has(old.id)) {
@@ -371,7 +373,7 @@ export function getAlbumsForMatching({ manualOnly = false } = {}) {
     JOIN artists ar ON ar.id = a.artist_id
     ${where}
   `).all();
-  const tracksStmt = db.prepare('SELECT id, position, title FROM tracks WHERE album_id = ? ORDER BY position');
+  const tracksStmt = db.prepare('SELECT id, disc, position, title FROM tracks WHERE album_id = ? ORDER BY disc, position');
   for (const album of albums) {
     album.tracks = tracksStmt.all(album.id);
   }
@@ -679,7 +681,7 @@ export function reorderPlaylist(playlistId, entryIds) {
 
 export function getTrackIdsForAlbum(albumId) {
   return getDb()
-    .prepare('SELECT id FROM tracks WHERE album_id = ? ORDER BY position')
+    .prepare('SELECT id FROM tracks WHERE album_id = ? ORDER BY disc, position')
     .all(albumId)
     .map(r => r.id);
 }

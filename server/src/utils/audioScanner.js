@@ -73,6 +73,7 @@ export async function readFileTags(absPath) {
     return {
       artist: common.albumartist || common.artist || null,
       album: common.album || null,
+      discNo: common.disk?.no ?? null,
       trackNo: common.track?.no ?? null,
       title: common.title || null,
       replayGain: replayGainOf(common),
@@ -113,6 +114,7 @@ export async function matchManualFolder(libraryPath, relFolder, album) {
     const fallback = parsePathFallback(relPath);
     files.push({
       relPath,
+      discNo: tags?.discNo ?? fallback.discNo,
       trackNo: tags?.trackNo ?? fallback.trackNo,
       title: tags?.title ?? fallback.title,
     });
@@ -153,10 +155,15 @@ async function runScan(libraryPath) {
     const albumTitle = tags?.album ?? fallback.album;
     const trackNo = tags?.trackNo ?? fallback.trackNo;
     const title = tags?.title ?? fallback.title;
+    const discNo = tags?.discNo ?? fallback.discNo;
 
     const album = matchAlbum(index, artist, albumTitle);
-    const track = album ? matchTrack(album, trackNo, title) : null;
-    if (track && !usedTrackIds.has(track.id)) {
+    // Tracks already taken are left out, so that two CDs without any disc
+    // information do not fight over the same track numbers.
+    const track = album
+      ? matchTrack({ tracks: album.tracks.filter(t => !usedTrackIds.has(t.id)) }, trackNo, title, discNo)
+      : null;
+    if (track) {
       usedTrackIds.add(track.id);
       matchedAlbumIds.add(album.id);
       entries.push({ trackId: track.id, filePath: relPath, replayGain: tags?.replayGain ?? null });

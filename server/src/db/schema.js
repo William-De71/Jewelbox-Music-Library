@@ -38,6 +38,7 @@ export const SCHEMA = `
   CREATE TABLE IF NOT EXISTS tracks (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     album_id   INTEGER NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+    disc       INTEGER NOT NULL DEFAULT 1,
     position   INTEGER NOT NULL,
     title      TEXT NOT NULL,
     duration   TEXT,

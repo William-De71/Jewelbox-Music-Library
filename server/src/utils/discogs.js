@@ -161,8 +161,11 @@ function normalizeDiscogsRelease(r) {
   // Extract tracks
   const tracks = [];
   (r.tracklist || []).forEach((track, index) => {
+    // Multi-CD releases number their tracks "disc-track" ("2-5").
+    const multiDisc = /^(\d+)-(\d+)$/.exec(track.position || '');
     tracks.push({
-      position: track.position || String(index + 1),
+      ...(multiDisc ? { disc: Number(multiDisc[1]) } : {}),
+      position: multiDisc ? Number(multiDisc[2]) : track.position || String(index + 1),
       title: track.title || '',
       duration: track.duration || null,
     });

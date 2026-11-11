@@ -1,3 +1,4 @@
+import { Fragment } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 import { api } from '../api/client.js';
 import { StarRating } from '../components/StarRating.jsx';
@@ -36,6 +37,8 @@ export function AlbumDetail({ navigate, albumId }) {
   };
 
   const playableTracks = album?.tracks?.filter((tr) => tr.has_file) || [];
+  // Several CDs: the track list gets a heading per CD.
+  const multiDisc = new Set((album?.tracks || []).map((tr) => tr.disc ?? 1)).size > 1;
 
   const handlePlayTrack = (track) => {
     if (current?.id === track.id) {
@@ -333,8 +336,16 @@ export function AlbumDetail({ navigate, albumId }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {album.tracks.map((track) => (
-                      <tr key={track.id} class={current?.id === track.id ? 'track-playing' : ''}>
+                    {album.tracks.map((track, idx) => (
+                      <Fragment key={track.id}>
+                      {multiDisc && (track.disc ?? 1) !== (album.tracks[idx - 1]?.disc ?? null) && (
+                        <tr class="track-disc-heading">
+                          <td colSpan={3}>
+                            <Disc size={14} class="me-1" />{t('albumDetail.disc', { n: String(track.disc ?? 1) })}
+                          </td>
+                        </tr>
+                      )}
+                      <tr class={current?.id === track.id ? 'track-playing' : ''}>
                         <td class="text-muted">
                           {track.has_file ? (
                             <button
@@ -389,6 +400,7 @@ export function AlbumDetail({ navigate, albumId }) {
                           </div>
                         </td>
                       </tr>
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>

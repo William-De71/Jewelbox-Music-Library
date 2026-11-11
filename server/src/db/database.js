@@ -35,6 +35,11 @@ function runMigrations(database) {
     database.exec("ALTER TABLE tracks ADD COLUMN file_path TEXT");
     console.log('[Migration] Added file_path column to tracks');
   }
+  // An album may hold several CDs: position restarts at 1 on each disc.
+  if (!trackCols.includes('disc')) {
+    database.exec("ALTER TABLE tracks ADD COLUMN disc INTEGER NOT NULL DEFAULT 1");
+    console.log('[Migration] Added disc column to tracks');
+  }
   if (!trackCols.includes('play_count')) {
     database.exec("ALTER TABLE tracks ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0");
     console.log('[Migration] Added play_count column to tracks');

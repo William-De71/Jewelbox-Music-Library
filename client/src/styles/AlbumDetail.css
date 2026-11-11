@@ -75,3 +75,9 @@
   margin: 1.75rem auto;
   max-width: 500px;
 }
+
+/* Multi-CD album: heading row above each CD's tracks */
+.track-disc-heading td {
+  font-weight: 600;
+  background: var(--tblr-bg-surface-secondary);
+}

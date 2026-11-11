@@ -47,9 +47,20 @@ describe('parsePathFallback', () => {
     expect(parsePathFallback('The Beatles/Abbey Road/03 - Come Together.flac')).toEqual({
       artist: 'The Beatles',
       album: 'Abbey Road',
+      discNo: null,
       trackNo: 3,
       title: 'Come Together',
     });
+  });
+
+  it('reads the disc from a CD folder and skips it for artist/album', () => {
+    expect(parsePathFallback('Pink Floyd/The Wall/CD2/03 - Vera.flac')).toMatchObject({
+      artist: 'Pink Floyd',
+      album: 'The Wall',
+      discNo: 2,
+      trackNo: 3,
+    });
+    expect(parsePathFallback('Pink Floyd/The Wall/Disc 1/01 - In the Flesh.flac').discNo).toBe(1);
   });
 
   it('parses dot and underscore separators', () => {
@@ -132,6 +143,22 @@ describe('matchTrack', () => {
     expect(matchTrack(album, 99, 'Unknown Song')).toBeNull();
     expect(matchTrack(album, null, null)).toBeNull();
     expect(matchTrack({ tracks: [] }, 1, 'Anything')).toBeNull();
+  });
+
+  it('tells the CDs of a multi-CD album apart', () => {
+    const double = {
+      tracks: [
+        { id: 21, disc: 1, position: 1, title: 'In the Flesh?' },
+        { id: 22, disc: 1, position: 2, title: 'The Thin Ice' },
+        { id: 23, disc: 2, position: 1, title: 'Hey You' },
+        { id: 24, disc: 2, position: 2, title: 'Is There Anybody Out There?' },
+      ],
+    };
+    expect(matchTrack(double, 1, 'Whatever', 2)?.id).toBe(23);
+    expect(matchTrack(double, 2, 'Whatever', 1)?.id).toBe(22);
+    // No disc information: the title decides, the first CD by default.
+    expect(matchTrack(double, 1, 'Hey You')?.id).toBe(23);
+    expect(matchTrack(double, 1, 'Whatever')?.id).toBe(21);
   });
 });
 

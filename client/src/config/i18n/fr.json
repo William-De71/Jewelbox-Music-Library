@@ -121,7 +121,7 @@
   },
   "albumForm": {
     "title": "Ajouter un album",
-    "addTitle": "Ajouter un CD",
+    "addTitle": "Ajouter un album",
     "editTitle": "Modifier l'album",
     "externalSearch": "Recherche automatique",
     "externalSearchPlaceholder": "Titre, artiste ou EAN (ex: 724385 586323)",
@@ -151,6 +151,7 @@
     "loadError": "Erreur lors du chargement de l'album",
     "infoTitle": "Informations",
     "tracksTitle": "Pistes",
+    "discTracksTitle": "CD {n} — Pistes",
     "form": {
       "title": "Titre de l'album",
       "titlePlaceholder": "ex: OK Computer",
@@ -177,6 +178,8 @@
       "trackTitlePlaceholder": "Titre de la piste",
       "trackDuration": "Durée",
       "addTrack": "Ajouter une piste",
+      "addDisc": "Ajouter un CD",
+      "removeDisc": "Supprimer ce CD",
       "removeTrack": "Supprimer",
       "noTracks": "Aucune piste ajoutée.",
       "addFirstTrack": "Ajouter la première",
@@ -209,6 +212,7 @@
     "title": "Titre de l'album",
     "artist": "Artiste",
     "tracks": "Pistes",
+    "disc": "CD {n}",
     "trackNumber": "#",
     "trackTitle": "Titre",
     "duration": "Durée",

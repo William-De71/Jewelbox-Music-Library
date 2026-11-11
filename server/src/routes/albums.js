@@ -98,6 +98,7 @@ export async function albumRoutes(fastify) {
               type: 'object',
               required: ['title'],
               properties: {
+                disc:     { type: 'integer', minimum: 1 },
                 position: { type: 'integer' },
                 title:    { type: 'string' },
                 duration: { type: 'string' },
