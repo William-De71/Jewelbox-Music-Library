@@ -20,6 +20,7 @@ import Fastify from 'fastify';
 import staticFiles from '@fastify/static';
 import { playerRoutes } from '../routes/player.js';
 import { getDb } from '../db/database.js';
+import { getAlbums } from '../db/queries.js';
 import { getMusicLibraryPath } from '../db/settings.js';
 
 let app;
@@ -315,7 +316,7 @@ describe('GET /player/search', () => {
     expect(body.albums.some(a => a.title === 'OK Computer')).toBe(true);
   });
 
-  it('excludes wishlist albums and their tracks', async () => {
+  it('excludes wishlist albums without audio and their tracks', async () => {
     const artistId = testDb.prepare('INSERT INTO artists (name) VALUES (?)').run('Wanted Artist').lastInsertRowid;
     const wantedId = testDb.prepare('INSERT INTO albums (title, artist_id, is_wanted) VALUES (?, ?, 1)')
       .run('Paranoid Wanted Album', artistId).lastInsertRowid;
@@ -326,5 +327,25 @@ describe('GET /player/search', () => {
     const body = res.json();
     expect(body.tracks.some(t => t.title === 'Paranoid Wanted Song')).toBe(false);
     expect(body.albums.some(a => a.title === 'Paranoid Wanted Album')).toBe(false);
+  });
+
+  it('finds wishlist albums and tracks that have their audio file', async () => {
+    const artistId = testDb.prepare('INSERT INTO artists (name) VALUES (?)').run('Mp3 Artist').lastInsertRowid;
+    const wantedId = testDb.prepare('INSERT INTO albums (title, artist_id, is_wanted) VALUES (?, ?, 1)')
+      .run('Playable Wanted Album', artistId).lastInsertRowid;
+    const insert = testDb.prepare('INSERT INTO tracks (album_id, position, title, file_path) VALUES (?, ?, ?, ?)');
+    insert.run(wantedId, 1, 'Playable Wanted Song', 'a/b/01.mp3');
+    insert.run(wantedId, 2, 'Playable Wanted Missing Song', null);
+
+    const body = (await app.inject({ method: 'GET', url: '/player/search?q=playable+wanted' })).json();
+    expect(body.albums.some(a => a.title === 'Playable Wanted Album')).toBe(true);
+    expect(body.tracks.map(t => t.title)).toEqual(['Playable Wanted Song']);
+
+    // The players' library (GET /albums?wanted=false&playable_wanted=true).
+    const titles = (options) => getAlbums({ limit: 500, ...options }).data.map(a => a.title);
+    expect(titles({ wanted: 'false' })).not.toContain('Playable Wanted Album');
+    const library = titles({ wanted: 'false', playableWanted: 'true' });
+    expect(library).toContain('Playable Wanted Album');
+    expect(library).not.toContain('Paranoid Wanted Album');
   });
 });

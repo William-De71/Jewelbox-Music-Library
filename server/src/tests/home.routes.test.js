@@ -448,18 +448,17 @@ describe('GET /player/home', () => {
     expect(fiveWins).toBeGreaterThan(320);
   });
 
-  it('suggestions exclude wanted, audio-less and recently shown albums', async () => {
+  it('suggestions exclude audio-less and recently shown albums, keep playable wishlist ones', async () => {
     await postHistory('album', albumIds.rated5);
 
     for (let i = 0; i < 10; i++) {
       const ids = (await getHome()).json().suggestions.map(a => a.id);
       expect(ids.length).toBeLessThanOrEqual(12);
-      expect(ids).not.toContain(albumIds.wanted);
       expect(ids).not.toContain(albumIds.noAudio);
       expect(ids).not.toContain(albumIds.rated5);
-      // Only playable, owned candidates remain.
+      // Only playable candidates remain, the wish list album with files included.
       for (const id of ids) {
-        expect([albumIds.rated1, albumIds.unrated]).toContain(id);
+        expect([albumIds.rated1, albumIds.unrated, albumIds.wanted]).toContain(id);
       }
     }
   });

@@ -496,7 +496,8 @@ export async function playerRoutes(fastify) {
   });
 
   // Library search for the app's search tab: album titles and artist names via
-  // getAlbums, track titles via searchTracks. Owned collection only, capped
+  // getAlbums, track titles via searchTracks. Owned collection, plus what can
+  // be played of the wish list; capped
   // (30 albums / 100 tracks) instead of paginated.
   fastify.get('/player/search', async (req, reply) => {
     try {
@@ -504,7 +505,7 @@ export async function playerRoutes(fastify) {
       if (q.length < 2) {
         return reply.code(400).send({ error: 'q must be at least 2 characters' });
       }
-      const { data: albums } = getAlbums({ search: q, wanted: 'false', limit: 30, sort: 'artist' });
+      const { data: albums } = getAlbums({ search: q, wanted: 'false', playableWanted: true, limit: 30, sort: 'artist' });
       return { albums, tracks: searchTracks(q) };
     } catch (err) {
       return reply.code(500).send({ error: err.message });

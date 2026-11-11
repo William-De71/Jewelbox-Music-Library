@@ -9,13 +9,14 @@ import { getDb } from '../db/database.js';
 
 export async function albumRoutes(fastify) {
   // GET /api/albums?page=1&limit=24&genre=Rock&rating=5&sort=title&order=asc&search=&letter=A
+  // wanted=false&playable_wanted=true: owned albums plus the wish list ones that have audio files (players).
   fastify.get('/albums', async (req, reply) => {
     try {
-      const { page, limit, genre, rating, sort, order, search, lent, wanted, letter, audio } = req.query;
+      const { page, limit, genre, rating, sort, order, search, lent, wanted, playable_wanted, letter, audio } = req.query;
       const result = getAlbums({
         page: page ? Number(page) : 1,
         limit: limit ? Number(limit) : 24,
-        genre, rating, sort, order, search, lent, wanted, letter, audio,
+        genre, rating, sort, order, search, lent, wanted, playableWanted: playable_wanted, letter, audio,
       });
       return result;
     } catch (err) {
