@@ -133,7 +133,7 @@ export function ListeningStats({ navigate }) {
                 {top.albums.map((album, i) => (
                   <li key={album.album_id} class="list-group-item d-flex align-items-center gap-3">
                     <span class="text-muted" style={{ width: 18 }}>{i + 1}</span>
-                    <button type="button" class="btn btn-link p-0 d-flex align-items-center gap-3 text-start text-reset text-decoration-none flex-grow-1" style={{ minWidth: 0 }}
+                    <button type="button" class="btn btn-link p-0 d-flex align-items-center justify-content-start gap-3 text-start text-reset text-decoration-none flex-grow-1" style={{ minWidth: 0 }}
                       onClick={() => openAlbum(album.album_id)}>
                       <Cover url={album.cover_url} title={album.title} />
                       <span class="text-truncate">
