@@ -61,7 +61,20 @@
     "addToWishlist": "Ajouter un souhait",
     "recentOwned": "Collection",
     "recentWantedSection": "Liste de souhaits",
-    "wantedTotal": "souhaits dans votre liste"
+    "wantedTotal": "souhaits dans votre liste",
+    "totalAlbums": "albums",
+    "totalWanted": "souhaits",
+    "totalLent": "prêtés",
+    "addAlbum": "Ajouter un album",
+    "addWish": "Souhait",
+    "suggestionsTitle": "À écouter aujourd'hui",
+    "suggestionsHint": "Bien notés et pas écoutés récemment",
+    "suggestionsRefresh": "Autres suggestions",
+    "suggestionsEmpty": "Aucun album écoutable à suggérer pour l'instant.",
+    "recentOwnedTitle": "Derniers ajouts à la collection",
+    "recentWantedTitle": "Derniers souhaits",
+    "seeAll": "Tout voir",
+    "lentTitle": "Prêts en cours"
   },
   "dashboard": {
     "searchPlaceholder": "Rechercher un album, un artiste...",

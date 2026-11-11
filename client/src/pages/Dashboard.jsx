@@ -1,8 +1,31 @@
 import { useState, useEffect } from 'preact/hooks';
 import { albumsApi } from '../api/albums.js';
+import { api } from '../api/client.js';
 import { isMac } from '../utils/searchShortcut.js';
 import { useI18n } from '../config/i18n/index.jsx';
-import { Home, Search, Music2, Shuffle, Clock, BarChart3, Settings, Plus, Heart, PenLine, Disc, User, Database } from 'lucide-preact';
+import { usePlayer } from '../components/PlayerContext.jsx';
+import { Home, Search, Music2, Shuffle, Clock, Settings, Plus, Heart, Disc, User, Database, Play, Headphones, UserPlus } from 'lucide-preact';
+
+// Albums shown in the "to listen today" band, and rows of each recent list.
+const SUGGESTION_COUNT = 6;
+const RECENT_COUNT = 5;
+
+function AlbumRow({ album, onOpen }) {
+  return (
+    <button type="button" class="list-group-item list-group-item-action home-row" onClick={() => onOpen(album.id)}>
+      {album.cover_url ? (
+        <img src={album.cover_url} alt="" class="home-row-cover" />
+      ) : (
+        <span class="home-row-cover bg-secondary-lt"><Music2 size={18} class="text-muted" /></span>
+      )}
+      <span class="home-row-text">
+        <span class="fw-semibold text-truncate d-block">{album.title}</span>
+        <span class="text-muted small text-truncate d-block">{album.artist?.name}</span>
+      </span>
+      {album.year && <span class="text-muted small flex-shrink-0">{album.year}</span>}
+    </button>
+  );
+}
 
 function daysAgo(dateStr) {
   if (!dateStr) return null;
@@ -12,9 +35,11 @@ function daysAgo(dateStr) {
 
 export function Dashboard({ navigate }) {
   const { t } = useI18n();
+  const { playAlbumById } = usePlayer();
   const [recentAlbums, setRecentAlbums] = useState([]);
   const [recentWanted, setRecentWanted] = useState([]);
-  const [randomAlbum, setRandomAlbum] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
   const [lentAlbums, setLentAlbums] = useState([]);
   const [total, setTotal] = useState(0);
   const [totalWanted, setTotalWanted] = useState(0);
@@ -22,8 +47,6 @@ export function Dashboard({ navigate }) {
   const [loading, setLoading] = useState(true);
   const [dbCheckComplete, setDbCheckComplete] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [quickSearch, setQuickSearch] = useState('');
-  const [quickSource, setQuickSource] = useState('musicbrainz');
 
   const loadData = async () => {
     try {
@@ -34,25 +57,21 @@ export function Dashboard({ navigate }) {
       setDbCheckComplete(true);
       if (!db) return;
 
-      const [recentData, recentWantedData, countData, countWantedData, lentData] = await Promise.all([
-        albumsApi.getAll({ sort: 'created_at', order: 'desc', limit: 10, wanted: 'false' }),
-        albumsApi.getAll({ sort: 'created_at', order: 'desc', limit: 10, wanted: 'true' }),
-        albumsApi.getAll({ limit: 1, wanted: 'false' }),
-        albumsApi.getAll({ limit: 1, wanted: 'true' }),
+      const [recentData, recentWantedData, lentData, home] = await Promise.all([
+        albumsApi.getAll({ sort: 'created_at', order: 'desc', limit: RECENT_COUNT, wanted: 'false' }),
+        albumsApi.getAll({ sort: 'created_at', order: 'desc', limit: RECENT_COUNT, wanted: 'true' }),
         albumsApi.getAll({ lent: 'true', limit: 50 }),
+        // The day's suggestions, the same as on the players' home: playable
+        // albums, well rated and not listened to lately. Never blocks the page.
+        api.getHomeFeed().catch(() => null),
       ]);
 
       setRecentAlbums(recentData.data);
       setRecentWanted(recentWantedData.data);
-      setTotal(countData.pagination.total);
-      setTotalWanted(countWantedData.pagination.total);
+      setTotal(recentData.pagination.total);
+      setTotalWanted(recentWantedData.pagination.total);
       setLentAlbums(lentData.data);
-
-      if (countData.pagination.total > 0) {
-        const randomPage = Math.floor(Math.random() * countData.pagination.total) + 1;
-        const randomData = await albumsApi.getAll({ limit: 1, page: randomPage, wanted: 'false' });
-        setRandomAlbum(randomData.data[0] || null);
-      }
+      setSuggestions(home?.suggestions || []);
     } catch (e) {
       console.error('Dashboard load error:', e);
     } finally {
@@ -62,14 +81,15 @@ export function Dashboard({ navigate }) {
 
   useEffect(() => { loadData(); }, []);
 
-  const shuffleRandom = async () => {
-    if (total === 0) return;
+  const refreshSuggestions = async () => {
+    setRefreshing(true);
     try {
-      const randomPage = Math.floor(Math.random() * total) + 1;
-      const res = await albumsApi.getAll({ limit: 1, page: randomPage });
-      setRandomAlbum(res.data[0] || null);
+      const res = await api.redrawSuggestions();
+      setSuggestions(res.suggestions || []);
     } catch (e) {
-      console.error('Shuffle error:', e);
+      console.error('Suggestions error:', e);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -115,303 +135,201 @@ export function Dashboard({ navigate }) {
     );
   }
 
+  const openAlbum = (id) => navigate('detail', { id });
+
   return (
     <div class="page-container">
-      <div class="container-fluid">
-        <div class="row">
-          <div class="col-12">
-            <div class="card">
-              <div class="card-header">
-                <h2 class="card-title">
-                  <Home size={24} class="me-2 text-primary" />
-                  {t('common.home')}
-                </h2>
-              </div>
-              <div class="card-body">
+      <div class="container-fluid home">
 
-                {/* Search bar */}
-                <form onSubmit={handleSearch} class="mb-4">
-                  <div class="input-group">
-                    <span class="input-group-text bg-transparent">
-                      <Search size={20} class="text-muted" />
-                    </span>
-                    <input
-                      type="text"
-                      class="form-control"
-                      placeholder={t('home.searchPlaceholder')}
-                      data-search-shortcut
-                      value={searchQuery}
-                      onInput={(e) => setSearchQuery(e.target.value)}
-                    />
-                    <span class="input-group-text bg-transparent d-none d-md-flex" title={t('home.searchShortcut')}>
-                      <kbd>{isMac() ? '⌘K' : 'Ctrl+K'}</kbd>
-                    </span>
-                    <button class="btn btn-primary" type="submit">
-                      {t('common.search')}
-                    </button>
-                  </div>
-                </form>
-
-                {/* Quick add */}
-                <div class="card mb-4">
-                  <div class="card-header">
-                    <h3 class="card-title fs-5 mb-0">
-                      <Plus size={17} class="me-2 text-success" />
-                      {t('home.quickAdd')}
-                    </h3>
-                  </div>
-                  <div class="card-body">
-                    <div class="row g-2 align-items-end">
-                      <div class="col-12 col-sm-6 col-md-3">
-                        <select
-                          class="form-select"
-                          value={quickSource}
-                          onChange={(e) => setQuickSource(e.target.value)}
-                        >
-                          <option value="musicbrainz">{t('albumForm.musicbrainz')}</option>
-                          <option value="discogs">{t('albumForm.discogs')}</option>
-                        </select>
-                      </div>
-                      <div class="col-12 col-sm-6 col-md-5">
-                        <input
-                          type="text"
-                          class="form-control"
-                          placeholder={t('home.quickAddPlaceholder')}
-                          value={quickSearch}
-                          onInput={(e) => setQuickSearch(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && quickSearch.trim() && navigate('add', { initialSearch: quickSearch.trim(), initialSource: quickSource })}
-                        />
-                      </div>
-                      <div class="col-12 col-md-4">
-                        <button
-                          class="btn btn-success w-100"
-                          disabled={!quickSearch.trim()}
-                          onClick={() => navigate('add', { initialSearch: quickSearch.trim(), initialSource: quickSource })}
-                        >
-                          <Search size={15} class="me-1" />{t('home.quickAddSearch')}
-                        </button>
-                      </div>
-                    </div>
-                    <div class="row g-2 mt-2">
-                      <div class="col-12 col-sm-6">
-                        <button class="btn btn-outline-primary btn-sm w-100" onClick={() => navigate('add', {})}>
-                          <PenLine size={14} class="me-1" />{t('home.addManually')}
-                        </button>
-                      </div>
-                      <div class="col-12 col-sm-6">
-                        <button class="btn btn-outline-danger btn-sm w-100" onClick={() => navigate('add', { fromWantList: true })}>
-                          <Heart size={14} class="me-1" />{t('home.addToWishlist')}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {loading ? (
-                  <div class="text-center py-5">
-                    <div class="spinner-border" role="status">
-                      <span class="visually-hidden">{t('common.loading')}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Recent + Random — 3 colonnes */}
-                    <div class="row mb-4 g-3">
-
-                      {/* Colonne 1 : Collection */}
-                      <div class="col-12 col-lg-4">
-                        <div class="card h-100">
-                          <div class="card-header">
-                            <h3 class="card-title fs-5 mb-0">
-                              <Clock size={16} class="me-2 text-primary" />
-                              {t('home.recentOwned')}
-                            </h3>
-                          </div>
-                          <div class="list-group list-group-flush">
-                            {recentAlbums.length === 0 ? (
-                              <div class="list-group-item text-muted text-center py-3 small">
-                                {t('home.noAlbums')}
-                              </div>
-                            ) : recentAlbums.map(album => (
-                              <div
-                                key={album.id}
-                                class="list-group-item list-group-item-action d-flex align-items-center gap-3"
-                                style={{ cursor: 'pointer' }}
-                                onClick={() => navigate('detail', { id: album.id })}
-                              >
-                                {album.cover_url ? (
-                                  <img src={album.cover_url} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
-                                ) : (
-                                  <div class="d-flex align-items-center justify-content-center bg-secondary-lt rounded" style={{ width: 40, height: 40, flexShrink: 0 }}>
-                                    <Music2 size={18} class="text-muted" />
-                                  </div>
-                                )}
-                                <div class="flex-grow-1 overflow-hidden">
-                                  <div class="fw-semibold text-truncate small">{album.title}</div>
-                                  <div class="text-muted" style={{ fontSize: '0.75rem' }}>{album.artist?.name}</div>
-                                </div>
-                                {album.year && <span class="text-muted flex-shrink-0" style={{ fontSize: '0.75rem' }}>{album.year}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Colonne 2 : Liste de souhaits */}
-                      <div class="col-12 col-lg-4">
-                        <div class="card h-100">
-                          <div class="card-header">
-                            <h3 class="card-title fs-5 mb-0">
-                              <Heart size={16} class="me-2 text-danger" />
-                              {t('home.recentWantedSection')}
-                            </h3>
-                          </div>
-                          <div class="list-group list-group-flush">
-                            {recentWanted.length === 0 ? (
-                              <div class="list-group-item text-muted text-center py-3 small">
-                                {t('home.noAlbums')}
-                              </div>
-                            ) : recentWanted.map(album => (
-                              <div
-                                key={album.id}
-                                class="list-group-item list-group-item-action d-flex align-items-center gap-3"
-                                style={{ cursor: 'pointer' }}
-                                onClick={() => navigate('detail', { id: album.id })}
-                              >
-                                {album.cover_url ? (
-                                  <img src={album.cover_url} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
-                                ) : (
-                                  <div class="d-flex align-items-center justify-content-center bg-secondary-lt rounded" style={{ width: 40, height: 40, flexShrink: 0 }}>
-                                    <Music2 size={18} class="text-muted" />
-                                  </div>
-                                )}
-                                <div class="flex-grow-1 overflow-hidden">
-                                  <div class="fw-semibold text-truncate small">{album.title}</div>
-                                  <div class="text-muted" style={{ fontSize: '0.75rem' }}>{album.artist?.name}</div>
-                                </div>
-                                {album.year && <span class="text-muted flex-shrink-0" style={{ fontSize: '0.75rem' }}>{album.year}</span>}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Column 3: Listening suggestion */}
-                      <div class="col-12 col-lg-4">
-                        <div class="card h-100">
-                          <div class="card-header d-flex justify-content-between align-items-center">
-                            <h3 class="card-title fs-5 mb-0">
-                              <Shuffle size={16} class="me-2 text-warning" />
-                              {t('home.randomAlbum')}
-                            </h3>
-                            <button
-                              class="btn btn-sm btn-outline-secondary"
-                              onClick={shuffleRandom}
-                              title={t('home.shuffle')}
-                            >
-                              <Shuffle size={13} />
-                            </button>
-                          </div>
-                          <div class="card-body d-flex flex-column align-items-center justify-content-center text-center gap-2">
-                            {randomAlbum ? (
-                              <div
-                                class="d-flex flex-column align-items-center gap-2"
-                                style={{ cursor: 'pointer' }}
-                                onClick={() => navigate('detail', { id: randomAlbum.id })}
-                              >
-                                {randomAlbum.cover_url ? (
-                                  <img
-                                    src={randomAlbum.cover_url}
-                                    alt=""
-                                    class="random-album-cover"
-                                    style={{ maxWidth: '100%', width: 180, height: 180, objectFit: 'cover', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}
-                                  />
-                                ) : (
-                                  <div
-                                    class="d-flex align-items-center justify-content-center bg-secondary-lt rounded random-album-cover"
-                                    style={{ maxWidth: '100%', width: 180, height: 180 }}
-                                  >
-                                    <Music2 size={56} class="text-muted" />
-                                  </div>
-                                )}
-                                <div>
-                                  <div class="fw-bold small">{randomAlbum.title}</div>
-                                  <div class="text-muted small">{randomAlbum.artist?.name}</div>
-                                  {randomAlbum.year && <div class="text-muted" style={{ fontSize: '0.75rem' }}>{randomAlbum.year}</div>}
-                                </div>
-                              </div>
-                            ) : (
-                              <p class="text-muted small">{t('home.noAlbums')}</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Lent albums */}
-                    {lentAlbums.length > 0 && (
-                      <div class="card mb-4">
-                        <div class="card-header">
-                          <h3 class="card-title fs-5 mb-0">
-                            📤 {t('home.currentlyLent')}
-                          </h3>
-                        </div>
-                        <div class="list-group list-group-flush">
-                          {lentAlbums.map(album => (
-                            <div
-                              key={album.id}
-                              class="list-group-item list-group-item-action d-flex align-items-center gap-3"
-                              style={{ cursor: 'pointer' }}
-                              onClick={() => navigate('detail', { id: album.id })}
-                            >
-                              {album.cover_url
-                                ? <img src={album.cover_url} alt=""
-                                    style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }} />
-                                : <div class="bg-secondary-lt rounded d-flex align-items-center justify-content-center flex-shrink-0"
-                                    style={{ width: 40, height: 40 }}>
-                                    <Disc size={18} class="text-muted" />
-                                  </div>
-                              }
-                              <div class="flex-grow-1 overflow-hidden">
-                                <strong class="text-truncate d-block">{album.title}</strong>
-                                <span class="text-muted small">{album.artist?.name}</span>
-                              </div>
-                              <div class="flex-shrink-0 text-end">
-                                <div class="badge bg-warning-lt text-warning">
-                                  <User size={11} class="me-1" />{album.lent_to}
-                                </div>
-                                {album.lent_at && (
-                                  <div class="text-muted mt-1" style={{ fontSize: '0.7rem' }}>
-                                    <Clock size={10} class="me-1" />{daysAgo(album.lent_at)} {t('lend.days')}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Totals */}
-                    <div class="d-flex flex-wrap justify-content-center gap-4 text-muted small pt-2">
-                      <span>
-                        <BarChart3 size={15} class="me-1" />
-                        <strong>{total}</strong> {t('home.albumsTotal')}
-                      </span>
-                      {totalWanted > 0 && (
-                        <span>
-                          <Heart size={14} class="me-1 text-danger" />
-                          <strong>{totalWanted}</strong> {t('home.wantedTotal')}
-                        </span>
-                      )}
-                    </div>
-                  </>
-                )}
-
-              </div>
+        {/* Title + totals */}
+        <div class="home-head">
+          <h2 class="page-title flex-grow-1 mb-0">
+            <Home size={24} class="me-2 text-primary" />
+            {t('common.home')}
+          </h2>
+          {!loading && (
+            <div class="home-totals">
+              <button type="button" class="btn home-total" onClick={() => navigate('collections')}>
+                <Disc size={15} class="me-2 text-primary" /><strong class="me-1">{total}</strong>{t('home.totalAlbums')}
+              </button>
+              <button type="button" class="btn home-total" onClick={() => navigate('wantlist')}>
+                <Heart size={15} class="me-2 text-danger" /><strong class="me-1">{totalWanted}</strong>{t('home.totalWanted')}
+              </button>
+              <button type="button" class="btn home-total" onClick={() => navigate('lend')}>
+                <UserPlus size={15} class="me-2 text-warning" /><strong class="me-1">{lentAlbums.length}</strong>{t('home.totalLent')}
+              </button>
             </div>
+          )}
+        </div>
+
+        {/* Search + add, on one line */}
+        <div class="home-actions">
+          <form onSubmit={handleSearch} class="home-search">
+            <div class="input-group">
+              <span class="input-group-text bg-transparent">
+                <Search size={20} class="text-muted" />
+              </span>
+              <input
+                type="text"
+                class="form-control"
+                placeholder={t('home.searchPlaceholder')}
+                data-search-shortcut
+                value={searchQuery}
+                onInput={(e) => setSearchQuery(e.target.value)}
+              />
+              <span class="input-group-text bg-transparent d-none d-md-flex" title={t('home.searchShortcut')}>
+                <kbd>{isMac() ? '⌘K' : 'Ctrl+K'}</kbd>
+              </span>
+              <button class="btn btn-primary" type="submit">
+                {t('common.search')}
+              </button>
+            </div>
+          </form>
+          <div class="home-add">
+            <button type="button" class="btn btn-success flex-grow-1" onClick={() => navigate('add', {})}>
+              <Plus size={16} class="me-1" />{t('home.addAlbum')}
+            </button>
+            <button type="button" class="btn btn-outline-danger" onClick={() => navigate('add', { fromWantList: true })}>
+              <Heart size={15} class="me-1" />{t('home.addWish')}
+            </button>
           </div>
         </div>
+
+        {loading ? (
+          <div class="text-center py-5">
+            <div class="spinner-border" role="status">
+              <span class="visually-hidden">{t('common.loading')}</span>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* To listen today: full-width band */}
+            <div class="card">
+              <div class="card-header home-card-header">
+                <h3 class="card-title fs-5 mb-0 flex-grow-1">
+                  <Headphones size={16} class="me-2 text-warning" />
+                  {t('home.suggestionsTitle')}
+                </h3>
+                <span class="text-muted small">{t('home.suggestionsHint')}</span>
+                {suggestions.length > 0 && (
+                  <button type="button" class="btn btn-sm btn-outline-secondary" onClick={refreshSuggestions} disabled={refreshing}>
+                    <Shuffle size={13} class="me-1" />{t('home.suggestionsRefresh')}
+                  </button>
+                )}
+              </div>
+              {suggestions.length === 0 ? (
+                <div class="card-body text-muted text-center small">{t('home.suggestionsEmpty')}</div>
+              ) : (
+                <div class="card-body home-suggestions">
+                  {suggestions.slice(0, SUGGESTION_COUNT).map(album => (
+                    <div key={album.id} class="home-suggestion">
+                      <div class="home-suggestion-cover">
+                        <button type="button" class="home-suggestion-open" onClick={() => openAlbum(album.id)} title={album.title}>
+                          {album.cover_url ? (
+                            <img src={album.cover_url} alt="" />
+                          ) : (
+                            <span class="home-suggestion-placeholder bg-secondary-lt"><Disc size={48} class="text-muted" /></span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-primary btn-icon home-suggestion-play"
+                          onClick={() => playAlbumById(album.id)}
+                          title={t('player.playAlbum')}
+                          aria-label={`${t('player.playAlbum')} : ${album.title}`}
+                        >
+                          <Play size={16} fill="currentColor" />
+                        </button>
+                      </div>
+                      <div class="fw-semibold text-truncate">{album.title}</div>
+                      <div class="text-muted small text-truncate">{album.artist?.name}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Latest additions: collection and wish list side by side */}
+            <div class="row g-3">
+              <div class="col-12 col-lg-6">
+                <div class="card h-100">
+                  <div class="card-header home-card-header">
+                    <h3 class="card-title fs-5 mb-0 flex-grow-1">
+                      <Clock size={16} class="me-2 text-primary" />
+                      {t('home.recentOwnedTitle')}
+                    </h3>
+                    <button type="button" class="btn btn-link btn-sm p-0" onClick={() => navigate('collections')}>{t('home.seeAll')}</button>
+                  </div>
+                  <div class="list-group list-group-flush">
+                    {recentAlbums.length === 0 ? (
+                      <div class="list-group-item text-muted text-center py-3 small">{t('home.noAlbums')}</div>
+                    ) : recentAlbums.map(album => <AlbumRow key={album.id} album={album} onOpen={openAlbum} />)}
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-lg-6">
+                <div class="card h-100">
+                  <div class="card-header home-card-header">
+                    <h3 class="card-title fs-5 mb-0 flex-grow-1">
+                      <Heart size={16} class="me-2 text-danger" />
+                      {t('home.recentWantedTitle')}
+                    </h3>
+                    <button type="button" class="btn btn-link btn-sm p-0" onClick={() => navigate('wantlist')}>{t('home.seeAll')}</button>
+                  </div>
+                  <div class="list-group list-group-flush">
+                    {recentWanted.length === 0 ? (
+                      <div class="list-group-item text-muted text-center py-3 small">{t('home.noAlbums')}</div>
+                    ) : recentWanted.map(album => <AlbumRow key={album.id} album={album} onOpen={openAlbum} />)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Lent albums */}
+            {lentAlbums.length > 0 && (
+              <div class="card">
+                <div class="card-header home-card-header">
+                  <h3 class="card-title fs-5 mb-0 flex-grow-1">
+                    <UserPlus size={16} class="me-2 text-warning" />
+                    {t('home.lentTitle')}
+                  </h3>
+                  <button type="button" class="btn btn-link btn-sm p-0" onClick={() => navigate('lend')}>{t('home.seeAll')}</button>
+                </div>
+                <div class="list-group list-group-flush">
+                  {lentAlbums.map(album => (
+                    <button
+                      key={album.id}
+                      type="button"
+                      class="list-group-item list-group-item-action home-row"
+                      onClick={() => openAlbum(album.id)}
+                    >
+                      {album.cover_url ? (
+                        <img src={album.cover_url} alt="" class="home-row-cover" />
+                      ) : (
+                        <span class="home-row-cover bg-secondary-lt"><Disc size={18} class="text-muted" /></span>
+                      )}
+                      <span class="home-row-text">
+                        <span class="fw-semibold text-truncate d-block">{album.title}</span>
+                        <span class="text-muted small text-truncate d-block">{album.artist?.name}</span>
+                      </span>
+                      <span class="flex-shrink-0 text-end">
+                        <span class="badge bg-warning-lt text-warning">
+                          <User size={11} class="me-1" />{album.lent_to}
+                        </span>
+                        {album.lent_at && (
+                          <span class="text-muted d-block mt-1 home-lent-since">
+                            <Clock size={10} class="me-1" />{daysAgo(album.lent_at)} {t('lend.days')}
+                          </span>
+                        )}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
       </div>
     </div>
   );
