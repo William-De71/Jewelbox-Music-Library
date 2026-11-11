@@ -97,6 +97,9 @@ export const api = {
 
   // Audio player
   playerScan: () => request('POST', '/player/scan'),
+  // Home feed shared with the players: the day's suggested albums.
+  getHomeFeed: () => request('GET', '/player/home'),
+  redrawSuggestions: () => request('POST', '/player/home/suggestions'),
   playerScanStatus: () => request('GET', '/player/scan/status'),
   playerBrowse: (dir = '') => request('GET', `/player/browse?dir=${encodeURIComponent(dir)}`),
   // Browses the server filesystem (absolute paths) to pick the library root.
