@@ -75,7 +75,9 @@ function mapAlbum(row) {
   };
 }
 
-export function getAlbums({ page = 1, limit = 24, genre, rating, sort = 'title', order = 'asc', search, lent, wanted, letter, audio } = {}) {
+const HAS_AUDIO = 'EXISTS(SELECT 1 FROM tracks t WHERE t.album_id = a.id AND t.file_path IS NOT NULL)';
+
+export function getAlbums({ page = 1, limit = 24, genre, rating, sort = 'title', order = 'asc', search, lent, wanted, playableWanted, letter, audio } = {}) {
   const db = getDb();
   const offset = (page - 1) * limit;
   const conditions = [];
@@ -89,7 +91,13 @@ export function getAlbums({ page = 1, limit = 24, genre, rating, sort = 'title',
   }
   if (lent === 'true' || lent === true) { conditions.push('a.is_lent = 1'); }
   if (wanted === 'true' || wanted === true) { conditions.push('a.is_wanted = 1'); }
-  if (wanted === 'false' || wanted === false) { conditions.push('a.is_wanted = 0'); }
+  if (wanted === 'false' || wanted === false) {
+    // The players' library: a wish list album of which the files are there
+    // (bought as MP3, the CD still wanted) plays like an owned one.
+    conditions.push(playableWanted === 'true' || playableWanted === true
+      ? `(a.is_wanted = 0 OR ${HAS_AUDIO})`
+      : 'a.is_wanted = 0');
+  }
   if (letter) { conditions.push("UPPER(SUBSTR(ar.name, 1, 1)) = ?"); params.push(letter.toUpperCase()); }
   // Audio files linked by the scan: 'none' = no track has a file, 'mp3' = at
   // least one track is an MP3 (the library is meant to be FLAC), 'flac' = every
@@ -551,7 +559,8 @@ export function getQueueDeviceLabel(deviceId) {
     .get(deviceId)?.device_label ?? null;
 }
 
-// Track-title search for the player's search screen: owned albums only,
+// Track-title search for the player's search screen: owned albums, and the
+// tracks of wish list albums that have their file;
 // capped rather than paginated — the client asks the user to refine instead.
 export function searchTracks(search, limit = 100) {
   const rows = getDb().prepare(`
@@ -559,7 +568,7 @@ export function searchTracks(search, limit = 100) {
     FROM tracks t
     JOIN albums a ON a.id = t.album_id
     JOIN artists ar ON ar.id = a.artist_id
-    WHERE t.title LIKE ? AND a.is_wanted = 0
+    WHERE t.title LIKE ? AND (a.is_wanted = 0 OR t.file_path IS NOT NULL)
     ORDER BY ar.name COLLATE NOCASE, a.title COLLATE NOCASE, t.id
     LIMIT ?
   `).all(`%${search}%`, limit);
@@ -999,7 +1008,8 @@ export function getRecentPlayedItems(limit = 8, { rankingLimit } = {}) {
   });
 }
 
-// Weighted random sample of playable albums: high ratings and albums not
+// Weighted random sample of playable albums (wish list ones with their files
+// included): high ratings and albums not
 // listened to recently are favoured. Weighting is done in JS rather than SQL
 // so it doesn't depend on SQLite math functions being available.
 export function drawSuggestedAlbums({ excludeIds = [], limit = 12 } = {}) {
@@ -1009,7 +1019,7 @@ export function drawSuggestedAlbums({ excludeIds = [], limit = 12 } = {}) {
     SELECT a.id, COALESCE(a.rating, 3) AS rating, MAX(t.last_played_at) AS last_played_at
     FROM albums a
     JOIN tracks t ON t.album_id = a.id
-    WHERE t.file_path IS NOT NULL AND a.is_wanted = 0 ${notIn}
+    WHERE t.file_path IS NOT NULL ${notIn}
     GROUP BY a.id
   `).all(...excludeIds);
 
