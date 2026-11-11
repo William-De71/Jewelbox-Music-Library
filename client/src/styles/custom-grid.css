@@ -56,3 +56,10 @@
   position: fixed;
   z-index: 9999;
 }
+
+/* The theme places the close button from the top, for a taller alert: on a
+   one-line toast the cross ended up below the text. */
+.toast-notification.alert-dismissible .btn-close {
+  top: 50%;
+  transform: translateY(-50%);
+}
