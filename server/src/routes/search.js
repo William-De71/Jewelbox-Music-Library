@@ -170,6 +170,7 @@ function normalizeMBRelease(r) {
   (r.media || []).forEach((medium) => {
     (medium.tracks || []).forEach((t) => {
       tracks.push({
+        disc: medium.position || 1,
         position: t.position,
         title: t.title,
         duration: t.length ? msToMMSS(t.length) : null,

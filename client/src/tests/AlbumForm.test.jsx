@@ -75,3 +75,36 @@ describe('AlbumForm - boutons Enregistrer / Enregistrer et ajouter', () => {
     expect(screen.getByPlaceholderText('ex: OK Computer').value).toBe('');
   });
 });
+
+describe('AlbumForm - plusieurs CD', () => {
+  it('le titre de la page est "Ajouter un album"', () => {
+    wrap(<AlbumForm navigate={vi.fn()} />);
+    expect(screen.getByText('Ajouter un album')).toBeTruthy();
+  });
+
+  it('"Ajouter un CD" crée un CD avec ses propres pistes', async () => {
+    wrap(<AlbumForm navigate={vi.fn()} />);
+    fillRequiredFields();
+
+    fireEvent.click(screen.getByText('Ajouter une piste'));
+    fireEvent.click(screen.getByText('Ajouter un CD'));
+    expect(screen.getByText('CD 2 — Pistes')).toBeTruthy();
+
+    const addTrackButtons = screen.getAllByText('Ajouter une piste');
+    expect(addTrackButtons).toHaveLength(2);
+    fireEvent.click(addTrackButtons[1]);
+
+    const titles = screen.getAllByPlaceholderText('Titre de la piste');
+    fireEvent.input(titles[0], { target: { value: 'In the Flesh?' } });
+    fireEvent.input(titles[1], { target: { value: 'Hey You' } });
+    fireEvent.click(screen.getByText('Enregistrer'));
+
+    await waitFor(() => expect(api.createAlbum).toHaveBeenCalled());
+    const payload = api.createAlbum.mock.calls[0][0];
+    expect(payload.discs).toBeUndefined();
+    expect(payload.tracks).toEqual([
+      expect.objectContaining({ disc: 1, position: 1, title: 'In the Flesh?' }),
+      expect.objectContaining({ disc: 2, position: 1, title: 'Hey You' }),
+    ]);
+  });
+});

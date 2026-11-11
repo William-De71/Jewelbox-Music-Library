@@ -668,3 +668,59 @@ describe('DELETE /albums/:id', () => {
     expect(remaining).toHaveLength(0);
   });
 });
+
+describe('Multi-CD albums', () => {
+  let albumId;
+
+  it('keeps the tracks of each CD apart, in CD order', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/albums',
+      payload: {
+        title: 'The Wall',
+        artist_name: 'Pink Floyd',
+        tracks: [
+          { disc: 2, position: 1, title: 'Hey You' },
+          { disc: 1, position: 1, title: 'In the Flesh?' },
+          { disc: 1, position: 2, title: 'The Thin Ice' },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    albumId = res.json().id;
+    expect(res.json().tracks.map(t => [t.disc, t.position, t.title])).toEqual([
+      [1, 1, 'In the Flesh?'],
+      [1, 2, 'The Thin Ice'],
+      [2, 1, 'Hey You'],
+    ]);
+  });
+
+  it('defaults to a single CD', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/albums',
+      payload: { title: 'Animals', artist_name: 'Pink Floyd', tracks: [{ position: 1, title: 'Pigs on the Wing' }] },
+    });
+    expect(res.json().tracks[0].disc).toBe(1);
+  });
+
+  it('keeps track ids when a CD is edited, the same number on another CD being another track', async () => {
+    const before = (await app.inject({ method: 'GET', url: `/albums/${albumId}` })).json().tracks;
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/albums/${albumId}`,
+      payload: {
+        tracks: [
+          { disc: 1, position: 1, title: 'In the Flesh?' },
+          { disc: 1, position: 2, title: 'The Thin Ice' },
+          { disc: 2, position: 1, title: 'Hey You (Remaster)' },
+          { disc: 2, position: 2, title: 'Is There Anybody Out There?' },
+        ],
+      },
+    });
+    const after = res.json().tracks;
+    expect(after.slice(0, 3).map(t => t.id)).toEqual(before.map(t => t.id));
+    expect(after[2].title).toBe('Hey You (Remaster)');
+    expect(after[3]).toMatchObject({ disc: 2, position: 2 });
+  });
+});

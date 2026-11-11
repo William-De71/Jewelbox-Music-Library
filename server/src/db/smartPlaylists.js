@@ -8,7 +8,7 @@ const BASE_FROM = `
   JOIN artists ar ON ar.id = a.artist_id
   WHERE t.file_path IS NOT NULL`;
 
-const ALPHA_ORDER = 'ar.name COLLATE NOCASE, a.title COLLATE NOCASE, t.position';
+const ALPHA_ORDER = 'ar.name COLLATE NOCASE, a.title COLLATE NOCASE, t.disc, t.position';
 
 const DYNAMIC_MIX_SIZE = 50;
 
@@ -34,7 +34,7 @@ export function parseRankingLimit(raw) {
 // are capped; the other lists return every matching track, however large
 // the library is.
 const DEFINITIONS = {
-  newest: { where: '', order: 'a.created_at DESC, a.id, t.position', limit: 100 },
+  newest: { where: '', order: 'a.created_at DESC, a.id, t.disc, t.position', limit: 100 },
   ever_played: { where: 'AND t.play_count > 0', order: ALPHA_ORDER, limit: null },
   never_played: { where: 'AND t.play_count = 0', order: ALPHA_ORDER, limit: null },
   last_played: { where: 'AND t.last_played_at IS NOT NULL', order: 't.last_played_at DESC', limit: 100 },

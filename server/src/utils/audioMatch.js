@@ -18,11 +18,16 @@ export function normalize(s) {
     .replace(/\s+/g, ' ');
 }
 
-// "Artiste/Album/03 - Titre.flac" -> { artist, album, trackNo, title }
-// Artist/album are null when the path is not deep enough.
+const DISC_FOLDER = /^(?:cd|disc|disk|disque)[\s._-]*(\d{1,2})$/i;
+
+// "Artiste/Album/03 - Titre.flac" -> { artist, album, discNo, trackNo, title }
+// Artist/album are null when the path is not deep enough. A "CD2" folder
+// around the file gives discNo and is skipped when reading artist/album.
 export function parsePathFallback(relPath) {
   const parts = String(relPath).split('/').filter(Boolean);
   const fileName = parts[parts.length - 1] || '';
+  const discFolder = parts.length >= 2 ? DISC_FOLDER.exec(parts[parts.length - 2].trim()) : null;
+  if (discFolder) parts.splice(parts.length - 2, 1);
   const base = fileName.replace(/\.[^.]+$/, '');
   const m = base.match(/^(\d{1,3})[\s.\-_]*(.*)$/);
   const trackNo = m ? parseInt(m[1], 10) : null;
@@ -30,6 +35,7 @@ export function parsePathFallback(relPath) {
   return {
     artist: parts.length >= 3 ? parts[parts.length - 3] : null,
     album: parts.length >= 2 ? parts[parts.length - 2] : null,
+    discNo: discFolder ? parseInt(discFolder[1], 10) : null,
     trackNo: Number.isFinite(trackNo) && trackNo > 0 ? trackNo : null,
     title: title || null,
   };
@@ -66,13 +72,21 @@ export function matchAlbum(index, artist, albumTitle) {
   return null;
 }
 
-export function matchTrack(album, trackNo, title) {
+// discNo: the CD the file says it is on, when known. Track numbers restart on
+// each CD, so on a multi-CD album a number alone may point at several tracks:
+// the title then decides, the first CD wins by default.
+export function matchTrack(album, trackNo, title, discNo = null) {
   const tracks = album.tracks || [];
-  if (trackNo != null) {
-    const byPosition = tracks.find(t => t.position === trackNo);
-    if (byPosition) return byPosition;
-  }
   const titleKey = normalize(title);
+  if (trackNo != null) {
+    const sameNumber = tracks.filter(t => t.position === trackNo);
+    const onDisc = discNo != null ? sameNumber.filter(t => (t.disc ?? 1) === discNo) : sameNumber;
+    if (onDisc.length > 1 && titleKey) {
+      const byNumberAndTitle = onDisc.find(t => normalize(t.title) === titleKey);
+      if (byNumberAndTitle) return byNumberAndTitle;
+    }
+    if (onDisc.length) return onDisc[0];
+  }
   if (!titleKey) return null;
   const byTitle = tracks.find(t => normalize(t.title) === titleKey);
   if (byTitle) return byTitle;
@@ -82,7 +96,7 @@ export function matchTrack(album, trackNo, title) {
   }) || null;
 }
 
-// Manual folder association: files = [{ relPath, trackNo, title }].
+// Manual folder association: files = [{ relPath, discNo?, trackNo, title }].
 // Matches by track number, then title; falls back to alphabetical order <-> position.
 export function matchFolderTracks(albumTracks, files) {
   const entries = [];
@@ -93,7 +107,7 @@ export function matchFolderTracks(albumTracks, files) {
 
   for (const file of sorted) {
     const album = { tracks: albumTracks.filter(t => !usedTracks.has(t.id)) };
-    const track = matchTrack(album, file.trackNo, file.title);
+    const track = matchTrack(album, file.trackNo, file.title, file.discNo ?? null);
     if (track) {
       usedTracks.add(track.id);
       entries.push({ trackId: track.id, filePath: file.relPath });
@@ -105,7 +119,7 @@ export function matchFolderTracks(albumTracks, files) {
   // Fallback: pair remaining files with remaining tracks in order.
   const remainingTracks = albumTracks
     .filter(t => !usedTracks.has(t.id))
-    .sort((a, b) => a.position - b.position);
+    .sort((a, b) => (a.disc ?? 1) - (b.disc ?? 1) || a.position - b.position);
   for (let i = 0; i < unmatchedFiles.length && i < remainingTracks.length; i++) {
     entries.push({ trackId: remainingTracks[i].id, filePath: unmatchedFiles[i].relPath });
   }

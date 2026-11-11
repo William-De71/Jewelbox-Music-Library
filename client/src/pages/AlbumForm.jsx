@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { api } from '../api/client.js';
 import { StarRating } from '../components/StarRating.jsx';
-import { Plus, ArrowLeft, Pencil, AlertCircle, Search, ChevronRight, Upload, Info, ListOrdered, X, Music2, Save, ImageIcon, CopyX, FastForward } from 'lucide-preact';
+import { Plus, ArrowLeft, Pencil, AlertCircle, Search, ChevronRight, Upload, Info, ListOrdered, X, Music2, Save, ImageIcon, CopyX, FastForward, Disc, Trash2 } from 'lucide-preact';
 import { useI18n } from '../config/i18n/index.jsx';
 
 function Combobox({ value, onChange, options = [], placeholder, required, id }) {
@@ -68,8 +68,26 @@ function Combobox({ value, onChange, options = [], placeholder, required, id }) 
 
 const EMPTY_FORM = {
   title: '', artist_name: '', label_name: '', year: '', genre: '',
-  total_duration: '', ean: '', rating: 0, cover_url: '', notes: '', tracks: [], is_wanted: false,
+  total_duration: '', ean: '', rating: 0, cover_url: '', notes: '', discs: [[]], is_wanted: false,
 };
+
+// An album holds one or several CDs, each with its own tracks. The form keeps
+// one track list per CD; the API takes a flat list with a disc number.
+function tracksToDiscs(tracks = []) {
+  const byDisc = new Map();
+  for (const track of tracks) {
+    const disc = Number(track.disc) || 1;
+    if (!byDisc.has(disc)) byDisc.set(disc, []);
+    byDisc.get(disc).push(track);
+  }
+  const discs = [...byDisc.keys()].sort((a, b) => a - b).map((disc) => byDisc.get(disc));
+  return discs.length ? discs : [[]];
+}
+
+function discsToTracks(discs) {
+  return discs.flatMap((tracks, d) =>
+    tracks.map((track, i) => ({ ...track, disc: d + 1, position: track.position ?? i + 1 })));
+}
 
 export function AlbumForm({ navigate, albumId, params = {} }) {
   const { t } = useI18n();
@@ -165,7 +183,7 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
         rating: album.rating || 0,
         cover_url: album.cover_url || '',
         notes: album.notes || '',
-        tracks: album.tracks || [],
+        discs: tracksToDiscs(album.tracks),
         is_wanted: album.is_wanted || false,
       });
       setLoading(false);
@@ -190,11 +208,12 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
     setSaving(true);
     setError(null);
     try {
+      const { discs, ...fields } = form;
       const payload = {
-        ...form,
+        ...fields,
         year: form.year ? Number(form.year) : undefined,
         rating: form.rating || undefined,
-        tracks: form.tracks.map((t, i) => ({ ...t, position: t.position ?? i + 1 })),
+        tracks: discsToTracks(discs),
       };
       if (isEdit) {
         await api.updateAlbum(albumId, payload);
@@ -292,7 +311,7 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
       cover_url: r.cover_url || '',
       notes: '',
       is_wanted: fromWantList || Boolean(r.is_wanted),
-      tracks: r.tracks || [],
+      discs: tracksToDiscs(r.tracks),
     });
     setSearchResults([]);
     checkDuplicate(r.title || '', r.artist_name || '');
@@ -331,26 +350,30 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
   };
 
   // Track management
-  const addTrack = () => {
+  const setDiscTracks = (discIdx, update) => {
     setForm((f) => ({
       ...f,
-      tracks: [...f.tracks, { position: f.tracks.length + 1, title: '', duration: '' }],
+      discs: f.discs.map((tracks, d) => (d === discIdx ? update(tracks) : tracks)),
     }));
   };
 
-  const updateTrack = (idx, key, value) => {
-    setForm((f) => {
-      const tracks = [...f.tracks];
-      tracks[idx] = { ...tracks[idx], [key]: value };
-      return { ...f, tracks };
-    });
+  const addDisc = () => setForm((f) => ({ ...f, discs: [...f.discs, []] }));
+
+  const removeDisc = (discIdx) => {
+    setForm((f) => ({ ...f, discs: f.discs.filter((_, d) => d !== discIdx) }));
   };
 
-  const removeTrack = (idx) => {
-    setForm((f) => ({
-      ...f,
-      tracks: f.tracks.filter((_, i) => i !== idx).map((t, i) => ({ ...t, position: i + 1 })),
-    }));
+  const addTrack = (discIdx) => {
+    setDiscTracks(discIdx, (tracks) => [...tracks, { position: tracks.length + 1, title: '', duration: '' }]);
+  };
+
+  const updateTrack = (discIdx, idx, key, value) => {
+    setDiscTracks(discIdx, (tracks) => tracks.map((t, i) => (i === idx ? { ...t, [key]: value } : t)));
+  };
+
+  const removeTrack = (discIdx, idx) => {
+    setDiscTracks(discIdx, (tracks) =>
+      tracks.filter((_, i) => i !== idx).map((t, i) => ({ ...t, position: i + 1 })));
   };
 
   if (loading) {
@@ -773,16 +796,33 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
             </div>
           </div>
 
-          {/* Tracklist */}
-          <div class="col-12">
+          {/* Tracklist: one card per CD */}
+          {form.discs.map((tracks, discIdx) => (
+          <div class="col-12" key={discIdx}>
             <div class="card">
-              <div class="card-header d-flex align-items-center">
-                <h3 class="card-title mb-0"><ListOrdered size={18} class="me-2" />{t('albumForm.tracksTitle')}</h3>
-                <button type="button" class="btn btn-primary ms-auto" onClick={addTrack}>
+              <div class="card-header d-flex align-items-center gap-2">
+                <h3 class="card-title mb-0">
+                  <ListOrdered size={18} class="me-2" />
+                  {form.discs.length > 1
+                    ? t('albumForm.discTracksTitle', { n: String(discIdx + 1) })
+                    : t('albumForm.tracksTitle')}
+                </h3>
+                <button type="button" class="btn btn-primary ms-auto" onClick={() => addTrack(discIdx)}>
                   <Plus size={16} class="me-1" />{t('albumForm.form.addTrack')}
                 </button>
+                {form.discs.length > 1 && (
+                  <button
+                    type="button"
+                    class="btn btn-outline-danger"
+                    onClick={() => removeDisc(discIdx)}
+                    title={t('albumForm.form.removeDisc')}
+                    aria-label={t('albumForm.form.removeDisc')}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
-              {form.tracks.length > 0 ? (
+              {tracks.length > 0 ? (
                 <div class="table-responsive">
                   <table class="table table-sm card-table">
                     <thead>
@@ -794,7 +834,7 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {form.tracks.map((track, idx) => (
+                      {tracks.map((track, idx) => (
                         <tr key={idx}>
                           <td>
                             <input
@@ -802,7 +842,7 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
                               class="form-control form-control-sm"
                               min="1"
                               value={track.position ?? idx + 1}
-                              onInput={(e) => updateTrack(idx, 'position', Number(e.target.value))}
+                              onInput={(e) => updateTrack(discIdx, idx, 'position', Number(e.target.value))}
                             />
                           </td>
                           <td>
@@ -811,7 +851,7 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
                               class="form-control form-control-sm"
                               placeholder={t('albumForm.form.trackTitlePlaceholder')}
                               value={track.title}
-                              onInput={(e) => updateTrack(idx, 'title', e.target.value)}
+                              onInput={(e) => updateTrack(discIdx, idx, 'title', e.target.value)}
                             />
                           </td>
                           <td>
@@ -820,11 +860,11 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
                               class="form-control form-control-sm"
                               placeholder={t('albumForm.form.durationPlaceholder')}
                               value={track.duration || ''}
-                              onInput={(e) => updateTrack(idx, 'duration', e.target.value)}
+                              onInput={(e) => updateTrack(discIdx, idx, 'duration', e.target.value)}
                             />
                           </td>
                           <td>
-                            <button type="button" class="btn btn-sm btn-ghost-danger p-1" onClick={() => removeTrack(idx)}>
+                            <button type="button" class="btn btn-sm btn-ghost-danger p-1" onClick={() => removeTrack(discIdx, idx)}>
                               <X size={16} />
                             </button>
                           </td>
@@ -838,12 +878,19 @@ export function AlbumForm({ navigate, albumId, params = {} }) {
                   <div class="text-muted mb-3">
                     <Music2 size={16} class="me-1" />{t('albumForm.form.noTracks')}
                   </div>
-                  <button type="button" class="btn btn-primary" onClick={addTrack}>
+                  <button type="button" class="btn btn-primary" onClick={() => addTrack(discIdx)}>
                     <Plus size={16} class="me-1" />{t('albumForm.form.addFirstTrack')}
                   </button>
                 </div>
               )}
             </div>
+          </div>
+          ))}
+
+          <div class="col-12">
+            <button type="button" class="btn btn-outline-primary" onClick={addDisc}>
+              <Disc size={16} class="me-1" />{t('albumForm.form.addDisc')}
+            </button>
           </div>
 
           {/* Form actions */}
